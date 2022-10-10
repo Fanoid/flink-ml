@@ -31,6 +31,7 @@ class ExamplesTest(PyFlinkMLTestCase):
         self.execute_all_in_module('pyflink.examples.ml.evaluation')
         self.execute_all_in_module('pyflink.examples.ml.feature')
         self.execute_all_in_module('pyflink.examples.ml.regression')
+        self.execute_all_in_module('pyflink.examples.ml.stats')
 
     def execute_all_in_module(self, module):
         module = importlib.import_module(module)
