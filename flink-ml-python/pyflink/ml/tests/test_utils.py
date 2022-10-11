@@ -22,7 +22,7 @@ import tempfile
 import unittest
 
 from pyflink.common import RestartStrategies, Configuration
-from pyflink.datastream import StreamExecutionEnvironment
+from pyflink.datastream import StreamExecutionEnvironment, HashMapStateBackend
 from pyflink.table import StreamTableEnvironment
 from pyflink.util.java_utils import get_j_env_configuration
 
@@ -38,6 +38,7 @@ class PyFlinkMLTestCase(unittest.TestCase):
         self.env.set_parallelism(4)
         self.env.enable_checkpointing(100)
         self.env.set_restart_strategy(RestartStrategies.no_restart())
+        self.env.set_state_backend(HashMapStateBackend())
         self.t_env = StreamTableEnvironment.create(self.env)
         self.temp_dir = tempfile.mkdtemp()
 
