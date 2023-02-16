@@ -62,6 +62,7 @@ under the License.
     <module>flink-ml-dist</module>
     <module>flink-ml-examples</module>
     <module>flink-ml-python</module>
+      <module>flink-ml-deploy</module>
   </modules>
 
   <properties>
@@ -575,7 +576,7 @@ under the License.
             <!--suppress MavenModelInspection -->
             <test.randomization.seed>${test.randomization.seed}</test.randomization.seed>
           </systemPropertyVariables>
-          <argLine>-Xms256m -Xmx2048m -Dmvn.forkNumber=${surefire.forkNumber} -XX:+UseG1GC</argLine>
+          <argLine>-Dmvn.forkNumber=${surefire.forkNumber} -XX:+UseG1GC</argLine>
         </configuration>
         <executions>
           <!--execute all the unit tests-->
