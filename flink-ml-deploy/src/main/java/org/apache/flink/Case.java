@@ -16,11 +16,38 @@
  * limitations under the License.
  */
 
-package org.apache.flink.ml.common.computation.execution;
+package org.apache.flink;
 
-public class PartitionedRecords<T, CONTAINER> implements Records<T, CONTAINER> {
-    @Override
-    public CONTAINER get() {
-        return null;
+/** Case. */
+public class Case {
+    // Files spec
+    public String dataDir;
+    public String trainFile;
+    public String testFile;
+    public String modelFile;
+    public Mode mode;
+
+    // Parameters
+    public String[] colNames;
+    public String[] colTypeStrs;
+    public String[] featureCols;
+    public String[] categoricalCols;
+    public String labelCol;
+    public boolean needDeserializeVector;
+    public int vectorSize = 0;
+    public double expectedAuc;
+
+    public int maxDepth;
+    public int maxIter;
+
+    // Env configs
+    public int parallelism;
+    public int checkpointInterval;
+    public String checkpointStorage;
+
+    /** Mode. */
+    public enum Mode {
+        TRAIN,
+        TRAIN_AND_TEST
     }
 }
