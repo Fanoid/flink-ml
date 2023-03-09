@@ -44,11 +44,21 @@ import org.apache.flink.util.Collector;
 import org.apache.flink.util.Preconditions;
 
 import org.apache.commons.collections.IteratorUtils;
+import org.apache.commons.lang3.concurrent.BasicThreadFactory;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Calculates local histograms for local data partition. Specifically in the first round, this
@@ -73,6 +83,10 @@ public class CacheDataCalcLocalHistsOperator
     private transient ListStateWithCache<HistBuilder> histBuilderState;
     private transient HistBuilder histBuilder;
     private transient SharedStorageContext sharedStorageContext;
+    private transient ExecutorService executor;
+    private transient List<Future<Void>> futures;
+    private transient ArrayBlockingQueue<Callable<Void>> tasks;
+    private transient AtomicBoolean terminated;
 
     public CacheDataCalcLocalHistsOperator(BoostingStrategy strategy) {
         super();
@@ -187,6 +201,36 @@ public class CacheDataCalcLocalHistsOperator
                         histBuilderState.update(Collections.singletonList(histBuilder));
                     });
         }
+        if (null == executor) {
+            BasicThreadFactory factory =
+                    new BasicThreadFactory.Builder()
+                            .namingPattern(
+                                    "gbt-hist-builder-"
+                                            + getRuntimeContext().getIndexOfThisSubtask()
+                                            + "-thread-%d")
+                            .build();
+            int nthreads = 4;
+            LOG.info("Use {} threads", nthreads);
+            executor = Executors.newFixedThreadPool(nthreads, factory);
+            futures = new ArrayList<>();
+            tasks = new ArrayBlockingQueue<>(1 << 18);
+            terminated = new AtomicBoolean(false);
+            for (int i = 0; i < nthreads; i += 1) {
+                futures.add(
+                        executor.submit(
+                                () -> {
+                                    while (!terminated.get()) {
+                                        Callable<Void> task;
+                                        task = tasks.poll(1, TimeUnit.MILLISECONDS);
+                                        if (null != task) {
+                                            LOG.debug("Get a task: {}", task);
+                                            task.call();
+                                        }
+                                    }
+                                    return null;
+                                }));
+            }
+        }
 
         sharedStorageContext.invoke(
                 (getter, setter) -> {
@@ -235,7 +279,8 @@ public class CacheDataCalcLocalHistsOperator
                                     indices,
                                     instances,
                                     pgh,
-                                    d -> setter.set(SharedStorageConstants.NODE_FEATURE_PAIRS, d));
+                                    d -> setter.set(SharedStorageConstants.NODE_FEATURE_PAIRS, d),
+                                    tasks);
                     for (Tuple2<Integer, Histogram> t : histograms) {
                         out.collect(t);
                     }
@@ -259,6 +304,15 @@ public class CacheDataCalcLocalHistsOperator
 
     @Override
     public void close() throws Exception {
+        terminated.set(true);
+        for (Future<Void> f : futures) {
+            try {
+                f.get();
+            } catch (InterruptedException | ExecutionException e) {
+                throw new RuntimeException(e);
+            }
+        }
+        executor.shutdown();
         instancesCollecting.clear();
         treeInitializerState.clear();
         histBuilderState.clear();
