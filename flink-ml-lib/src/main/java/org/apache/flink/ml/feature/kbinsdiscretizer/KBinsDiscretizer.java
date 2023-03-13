@@ -164,7 +164,7 @@ public class KBinsDiscretizer
 
         KBinsDiscretizerModel model =
                 new KBinsDiscretizerModel().setModelData(tEnv.fromDataStream(modelData));
-        ReadWriteUtils.updateExistingParams(model, getParamMap());
+        ParamUtils.updateExistingParams(model, getParamMap());
         return model;
     }
 
