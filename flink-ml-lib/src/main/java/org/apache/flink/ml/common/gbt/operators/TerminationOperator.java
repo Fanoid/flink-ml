@@ -20,6 +20,7 @@ package org.apache.flink.ml.common.gbt.operators;
 
 import org.apache.flink.iteration.IterationListener;
 import org.apache.flink.ml.common.gbt.GBTModelData;
+import org.apache.flink.ml.common.gbt.GBTModelDataUtil;
 import org.apache.flink.ml.common.sharedobjects.AbstractSharedObjectsStreamOperator;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
@@ -65,7 +66,7 @@ public class TerminationOperator extends AbstractSharedObjectsStreamOperator<Int
                     (getter, setter) ->
                             context.output(
                                     modelDataOutputTag,
-                                    GBTModelData.from(
+                                    GBTModelDataUtil.from(
                                             getter.get(SharedObjectsConstants.TRAIN_CONTEXT),
                                             getter.get(SharedObjectsConstants.ALL_TREES))));
         }

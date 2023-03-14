@@ -25,11 +25,17 @@ import org.apache.flink.api.java.typeutils.RowTypeInfo;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.ml.classification.gbtclassifier.GBTClassifier;
 import org.apache.flink.ml.classification.gbtclassifier.GBTClassifierModel;
+import org.apache.flink.ml.classification.gbtclassifier.GBTClassifierModelServable;
 import org.apache.flink.ml.common.gbt.GBTModelData;
+import org.apache.flink.ml.common.gbt.GBTModelDataUtil;
 import org.apache.flink.ml.common.gbt.defs.TaskType;
 import org.apache.flink.ml.linalg.DenseVector;
 import org.apache.flink.ml.linalg.Vectors;
 import org.apache.flink.ml.linalg.typeinfo.VectorTypeInfo;
+import org.apache.flink.ml.servable.api.DataFrame;
+import org.apache.flink.ml.servable.types.BasicType;
+import org.apache.flink.ml.servable.types.DataType;
+import org.apache.flink.ml.servable.types.DataTypes;
 import org.apache.flink.ml.util.ParamUtils;
 import org.apache.flink.ml.util.TestUtils;
 import org.apache.flink.streaming.api.environment.ExecutionCheckpointingOptions;
@@ -48,13 +54,16 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
+import java.io.ByteArrayInputStream;
 import java.util.Arrays;
 import java.util.BitSet;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
+import static org.apache.flink.ml.util.TestUtils.saveAndLoadServable;
 import static org.apache.flink.table.api.Expressions.$;
 
 /** Tests {@link GBTClassifier} and {@link GBTClassifierModel}. */
@@ -117,12 +126,41 @@ public class GBTClassifierTest extends AbstractTestBase {
                             Vectors.dense(0.11362915817869357, 0.8863708418213064)));
     private StreamTableEnvironment tEnv;
     private Table inputTable;
+    private DataFrame inputDataFrame;
 
     private static void verifyPredictionResult(Table output, List<Row> expected) throws Exception {
         StreamTableEnvironment tEnv =
                 (StreamTableEnvironment) ((TableImpl) output).getTableEnvironment();
         //noinspection unchecked
         List<Row> results = IteratorUtils.toList(tEnv.toDataStream(output).executeAndCollect());
+        final double delta = 1e-3;
+        final Comparator<DenseVector> denseVectorComparator =
+                new TestUtils.DenseVectorComparatorWithDelta(delta);
+        final Comparator<Row> comparator =
+                Comparator.<Row, Double>comparing(d -> d.getFieldAs(0))
+                        .thenComparing(d -> d.getFieldAs(1), denseVectorComparator)
+                        .thenComparing(d -> d.getFieldAs(2), denseVectorComparator);
+        TestUtils.compareResultCollectionsWithComparator(expected, results, comparator);
+    }
+
+    private static void verifyPredictionResult(
+            DataFrame output,
+            List<Row> expected,
+            String predictionCol,
+            String rawPredictionCol,
+            String probabilityCol) {
+        int predictionColIndex = output.getIndex(predictionCol);
+        int rawPredictionColIndex = output.getIndex(rawPredictionCol);
+        int probabilityColIndex = output.getIndex(probabilityCol);
+        List<Row> results =
+                output.collect().stream()
+                        .map(
+                                d ->
+                                        Row.of(
+                                                d.get(predictionColIndex),
+                                                d.get(rawPredictionColIndex),
+                                                d.get(probabilityColIndex)))
+                        .collect(Collectors.toList());
         final double delta = 1e-3;
         final Comparator<DenseVector> denseVectorComparator =
                 new TestUtils.DenseVectorComparatorWithDelta(delta);
@@ -144,23 +182,33 @@ public class GBTClassifierTest extends AbstractTestBase {
         env.setRestartStrategy(RestartStrategies.noRestart());
         tEnv = StreamTableEnvironment.create(env);
 
+        String[] colNames = {"f0", "f1", "f2", "label", "weight", "cls_label", "vec"};
+        TypeInformation<?>[] colTypes = {
+            Types.DOUBLE,
+            Types.INT,
+            Types.STRING,
+            Types.DOUBLE,
+            Types.DOUBLE,
+            Types.DOUBLE,
+            VectorTypeInfo.INSTANCE
+        };
+        DataType[] dataTypes = {
+            DataTypes.DOUBLE,
+            DataTypes.INT,
+            DataTypes.STRING,
+            DataTypes.DOUBLE,
+            DataTypes.DOUBLE,
+            DataTypes.DOUBLE,
+            DataTypes.VECTOR(BasicType.DOUBLE)
+        };
+
         inputTable =
                 tEnv.fromDataStream(
-                        env.fromCollection(
-                                inputDataRows,
-                                new RowTypeInfo(
-                                        new TypeInformation[] {
-                                            Types.DOUBLE,
-                                            Types.INT,
-                                            Types.STRING,
-                                            Types.DOUBLE,
-                                            Types.DOUBLE,
-                                            Types.DOUBLE,
-                                            VectorTypeInfo.INSTANCE
-                                        },
-                                        new String[] {
-                                            "f0", "f1", "f2", "label", "weight", "cls_label", "vec"
-                                        })));
+                        env.fromCollection(inputDataRows, new RowTypeInfo(colTypes, colNames)));
+
+        inputDataFrame =
+                TestUtils.constructDataFrame(
+                        Arrays.asList(colNames), Arrays.asList(dataTypes), inputDataRows);
     }
 
     @Test
@@ -538,5 +586,63 @@ public class GBTClassifierTest extends AbstractTestBase {
                         $(gbtc.getRawPredictionCol()),
                         $(gbtc.getProbabilityCol()));
         verifyPredictionResult(output, outputRows);
+    }
+
+    @Test
+    public void testSaveLoadServableAndPredict() throws Exception {
+        GBTClassifier gbtc =
+                new GBTClassifier()
+                        .setFeaturesCols("f0", "f1", "f2")
+                        .setCategoricalCols("f2")
+                        .setLabelCol("cls_label")
+                        .setRegGamma(0.)
+                        .setMaxBins(3)
+                        .setSeed(123);
+        GBTClassifierModel model = gbtc.fit(inputTable);
+
+        GBTClassifierModelServable servable =
+                saveAndLoadServable(
+                        tEnv,
+                        model,
+                        tempFolder.newFolder().getAbsolutePath(),
+                        GBTClassifierModel::loadServable);
+
+        DataFrame output = servable.transform(inputDataFrame);
+        verifyPredictionResult(
+                output,
+                outputRows,
+                servable.getPredictionCol(),
+                servable.getRawPredictionCol(),
+                servable.getProbabilityCol());
+    }
+
+    @Test
+    public void testSetModelDataToServable() throws Exception {
+        GBTClassifier gbtc =
+                new GBTClassifier()
+                        .setFeaturesCols("f0", "f1", "f2")
+                        .setCategoricalCols("f2")
+                        .setLabelCol("cls_label")
+                        .setRegGamma(0.)
+                        .setMaxBins(3)
+                        .setSeed(123);
+        GBTClassifierModel model = gbtc.fit(inputTable);
+
+        byte[] serializedModelData =
+                GBTModelDataUtil.getModelDataByteStream(model.getModelData()[0])
+                        .executeAndCollect()
+                        .next();
+
+        GBTClassifierModelServable servable = new GBTClassifierModelServable();
+        ParamUtils.updateExistingParams(servable, model.getParamMap());
+        servable.setModelData(new ByteArrayInputStream(serializedModelData));
+
+        DataFrame output = servable.transform(inputDataFrame);
+        verifyPredictionResult(
+                output,
+                outputRows,
+                servable.getPredictionCol(),
+                servable.getRawPredictionCol(),
+                servable.getProbabilityCol());
     }
 }

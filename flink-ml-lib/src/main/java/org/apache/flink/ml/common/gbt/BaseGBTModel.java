@@ -69,7 +69,7 @@ public abstract class BaseGBTModel<T extends BaseGBTModel<T>> implements Model<T
                 ReadWriteUtils.loadModelData(
                         tEnv,
                         new Path(path, MODEL_DATA_PATH).toString(),
-                        new GBTModelData.ModelDataDecoder());
+                        new GBTModelDataUtil.ModelDataDecoder());
         Table featureImportanceTable =
                 ReadWriteUtils.loadModelData(
                         tEnv,
@@ -101,9 +101,9 @@ public abstract class BaseGBTModel<T extends BaseGBTModel<T>> implements Model<T
     public void save(String path) throws IOException {
         ReadWriteUtils.saveMetadata(this, path);
         ReadWriteUtils.saveModelData(
-                GBTModelData.getModelDataStream(modelDataTable),
+                GBTModelDataUtil.getModelDataStream(modelDataTable),
                 new Path(path, MODEL_DATA_PATH).toString(),
-                new GBTModelData.ModelDataEncoder());
+                new GBTModelDataUtil.ModelDataEncoder());
 
         StreamTableEnvironment tEnv =
                 (StreamTableEnvironment) ((TableImpl) featureImportanceTable).getTableEnvironment();

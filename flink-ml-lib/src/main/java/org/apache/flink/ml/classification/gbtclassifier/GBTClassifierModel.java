@@ -20,13 +20,17 @@ package org.apache.flink.ml.classification.gbtclassifier;
 
 import org.apache.flink.api.common.functions.RichMapFunction;
 import org.apache.flink.api.common.typeinfo.Types;
+import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.api.java.typeutils.RowTypeInfo;
 import org.apache.flink.ml.common.broadcast.BroadcastUtils;
 import org.apache.flink.ml.common.datastream.TableUtils;
 import org.apache.flink.ml.common.gbt.BaseGBTModel;
 import org.apache.flink.ml.common.gbt.GBTModelData;
-import org.apache.flink.ml.linalg.Vectors;
+import org.apache.flink.ml.common.gbt.GBTModelDataUtil;
+import org.apache.flink.ml.linalg.DenseVector;
 import org.apache.flink.ml.linalg.typeinfo.DenseVectorTypeInfo;
+import org.apache.flink.ml.param.Param;
+import org.apache.flink.ml.util.ParamUtils;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
@@ -35,11 +39,11 @@ import org.apache.flink.types.Row;
 import org.apache.flink.util.Preconditions;
 
 import org.apache.commons.lang3.ArrayUtils;
-import org.apache.commons.math3.analysis.function.Sigmoid;
 import org.eclipse.collections.impl.map.mutable.primitive.IntDoubleHashMap;
 
 import java.io.IOException;
 import java.util.Collections;
+import java.util.Map;
 
 /** A Model computed by {@link GBTClassifier}. */
 public class GBTClassifierModel extends BaseGBTModel<GBTClassifierModel>
@@ -57,6 +61,10 @@ public class GBTClassifierModel extends BaseGBTModel<GBTClassifierModel>
         return BaseGBTModel.load(tEnv, path);
     }
 
+    public static GBTClassifierModelServable loadServable(String path) throws IOException {
+        return GBTClassifierModelServable.load(path);
+    }
+
     @Override
     public Table[] transform(Table... inputs) {
         Preconditions.checkArgument(inputs.length == 1);
@@ -64,7 +72,8 @@ public class GBTClassifierModel extends BaseGBTModel<GBTClassifierModel>
                 (StreamTableEnvironment) ((TableImpl) inputs[0]).getTableEnvironment();
         DataStream<Row> inputStream = tEnv.toDataStream(inputs[0]);
         final String broadcastModelKey = "broadcastModelKey";
-        DataStream<GBTModelData> modelDataStream = GBTModelData.getModelDataStream(modelDataTable);
+        DataStream<GBTModelData> modelDataStream =
+                GBTModelDataUtil.getModelDataStream(modelDataTable);
         RowTypeInfo inputTypeInfo = TableUtils.getRowTypeInfo(inputs[0].getResolvedSchema());
         RowTypeInfo outputTypeInfo =
                 new RowTypeInfo(
@@ -86,7 +95,8 @@ public class GBTClassifierModel extends BaseGBTModel<GBTClassifierModel>
                             //noinspection unchecked
                             DataStream<Row> inputData = (DataStream<Row>) inputList.get(0);
                             return inputData.map(
-                                    new PredictLabelFunction(broadcastModelKey, getFeaturesCols()),
+                                    new PredictLabelFunction(
+                                            broadcastModelKey, getFeaturesCols(), paramMap),
                                     outputTypeInfo);
                         });
         return new Table[] {tEnv.fromDataStream(predictionResult)};
@@ -94,23 +104,30 @@ public class GBTClassifierModel extends BaseGBTModel<GBTClassifierModel>
 
     private static class PredictLabelFunction extends RichMapFunction<Row, Row> {
 
-        private static final Sigmoid sigmoid = new Sigmoid();
-
         private final String broadcastModelKey;
+        private final Map<Param<?>, Object> params;
         private String[] featuresCols;
         private GBTModelData modelData;
 
-        public PredictLabelFunction(String broadcastModelKey, String[] featuresCols) {
+        private GBTClassifierModelServable servable;
+
+        public PredictLabelFunction(
+                String broadcastModelKey, String[] featuresCols, Map<Param<?>, Object> paramMap) {
             this.broadcastModelKey = broadcastModelKey;
             this.featuresCols = featuresCols;
+            params = paramMap;
         }
 
         @Override
-        public Row map(Row value) throws Exception {
-            if (null == modelData) {
+        public Row map(Row value) {
+            if (null == servable) {
                 modelData =
                         (GBTModelData)
                                 getRuntimeContext().getBroadcastVariable(broadcastModelKey).get(0);
+                servable = new GBTClassifierModelServable(modelData);
+                ParamUtils.updateExistingParams(servable, params);
+                // TODO: this is a temporary approach to pass parameter values from training to
+                // prediction for PAI Designer.
                 if (null == featuresCols || 0 == featuresCols.length) {
                     featuresCols = modelData.featureNames.toArray(new String[0]);
                     if (modelData.isInputVector) {
@@ -120,15 +137,9 @@ public class GBTClassifierModel extends BaseGBTModel<GBTClassifierModel>
                     }
                 }
             }
-            IntDoubleHashMap features = modelData.rowToFeatures(value, featuresCols);
-            double logits = modelData.predictRaw(features);
-            double prob = sigmoid.value(logits);
-            return Row.join(
-                    value,
-                    Row.of(
-                            logits >= 0. ? 1. : 0.,
-                            Vectors.dense(-logits, logits),
-                            Vectors.dense(1 - prob, prob)));
+            IntDoubleHashMap features = modelData.toFeatures(featuresCols, value::getField);
+            Tuple3<Double, DenseVector, DenseVector> results = servable.transform(features);
+            return Row.join(value, Row.of(results.f0, results.f1, results.f2));
         }
     }
 }

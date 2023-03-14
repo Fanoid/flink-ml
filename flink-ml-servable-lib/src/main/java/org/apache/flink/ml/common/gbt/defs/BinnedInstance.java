@@ -18,8 +18,6 @@
 
 package org.apache.flink.ml.common.gbt.defs;
 
-import org.apache.flink.ml.feature.kbinsdiscretizer.KBinsDiscretizer;
-import org.apache.flink.ml.feature.stringindexer.StringIndexer;
 import org.apache.flink.ml.linalg.SparseVector;
 
 import javax.annotation.Nullable;
@@ -29,8 +27,8 @@ import java.util.Arrays;
 /**
  * Represents an instance including binned values of all features, weight, and label.
  *
- * <p>Categorical and continuous features are mapped to integers by {@link StringIndexer} and {@link
- * KBinsDiscretizer}, respectively. Null values (`null` or `Double.NaN`) are also mapped to certain
+ * <p>Categorical and continuous features are mapped to integers by StringIndexer and
+ * KBinsDiscretizer, respectively. Null values (`null` or `Double.NaN`) are also mapped to certain
  * integers.
  *
  * <p>NOTE: When the input features are sparse, i.e., from {@link SparseVector}s, unseen indices are
