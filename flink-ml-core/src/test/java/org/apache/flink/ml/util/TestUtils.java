@@ -45,6 +45,7 @@ import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 import org.apache.flink.table.types.DataType;
 import org.apache.flink.test.util.TestBaseUtils;
 import org.apache.flink.types.Row;
+import org.apache.flink.util.function.BiFunctionWithException;
 import org.apache.flink.util.function.FunctionWithException;
 
 import org.apache.commons.collections.IteratorUtils;
@@ -56,7 +57,6 @@ import java.io.DataOutputStream;
 import java.io.EOFException;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.lang.reflect.Method;
 import java.util.Comparator;
 import java.util.List;
 
@@ -195,7 +195,11 @@ public class TestUtils {
      * stage.
      */
     public static <T extends Stage<T>> T saveAndReload(
-            StreamTableEnvironment tEnv, T stage, String path) throws Exception {
+            StreamTableEnvironment tEnv,
+            T stage,
+            String path,
+            BiFunctionWithException<StreamTableEnvironment, String, T, IOException> loadFunc)
+            throws Exception {
         StreamExecutionEnvironment env = TableUtils.getExecutionEnvironment(tEnv);
 
         stage.save(path);
@@ -208,9 +212,7 @@ public class TestUtils {
             }
         }
 
-        Method method =
-                stage.getClass().getMethod("load", StreamTableEnvironment.class, String.class);
-        return (T) method.invoke(null, tEnv, path);
+        return loadFunc.apply(tEnv, path);
     }
 
     /**
