@@ -97,7 +97,7 @@ public class GBTClassifierModel extends BaseGBTModel<GBTClassifierModel>
         private static final Sigmoid sigmoid = new Sigmoid();
 
         private final String broadcastModelKey;
-        private final String[] featuresCols;
+        private String[] featuresCols;
         private GBTModelData modelData;
 
         public PredictLabelFunction(String broadcastModelKey, String[] featuresCols) {
@@ -111,6 +111,9 @@ public class GBTClassifierModel extends BaseGBTModel<GBTClassifierModel>
                 modelData =
                         (GBTModelData)
                                 getRuntimeContext().getBroadcastVariable(broadcastModelKey).get(0);
+                if (null == featuresCols || 0 == featuresCols.length) {
+                    featuresCols = modelData.featureNames.toArray(new String[0]);
+                }
             }
             IntDoubleHashMap features = modelData.rowToFeatures(value, featuresCols);
             double logits = modelData.predictRaw(features);

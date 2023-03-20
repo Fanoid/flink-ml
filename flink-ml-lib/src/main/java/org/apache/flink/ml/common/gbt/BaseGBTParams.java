@@ -18,6 +18,8 @@
 
 package org.apache.flink.ml.common.gbt;
 
+import org.apache.flink.ml.common.param.HasCategoricalCols;
+import org.apache.flink.ml.common.param.HasLabelCol;
 import org.apache.flink.ml.common.param.HasMaxIter;
 import org.apache.flink.ml.common.param.HasSeed;
 import org.apache.flink.ml.common.param.HasWeightCol;
@@ -36,7 +38,12 @@ import org.apache.flink.ml.param.StringParam;
  * @param <T> The class type of this instance.
  */
 public interface BaseGBTParams<T>
-        extends BaseGBTModelParams<T>, HasWeightCol<T>, HasMaxIter<T>, HasSeed<T> {
+        extends BaseGBTModelParams<T>,
+                HasLabelCol<T>,
+                HasCategoricalCols<T>,
+                HasWeightCol<T>,
+                HasMaxIter<T>,
+                HasSeed<T> {
     Param<Double> REG_LAMBDA =
             new DoubleParam(
                     "regLambda",

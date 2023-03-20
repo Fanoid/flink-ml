@@ -166,7 +166,7 @@ public class GBTClassifierTest extends AbstractTestBase {
     @Test
     public void testParam() {
         GBTClassifier gbtc = new GBTClassifier();
-        Assert.assertArrayEquals(new String[] {"features"}, gbtc.getFeaturesCols());
+        Assert.assertArrayEquals(new String[] {}, gbtc.getFeaturesCols());
         Assert.assertEquals("label", gbtc.getLabelCol());
         Assert.assertArrayEquals(new String[] {}, gbtc.getCategoricalCols());
         Assert.assertEquals("prediction", gbtc.getPredictionCol());
