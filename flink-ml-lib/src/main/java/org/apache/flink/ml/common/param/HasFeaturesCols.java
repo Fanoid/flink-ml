@@ -35,8 +35,8 @@ public interface HasFeaturesCols<T> extends WithParams<T> {
             new StringArrayParam(
                     "featuresCols",
                     "Feature column names.",
-                    new String[] {"features"},
-                    ParamValidators.nonEmptyArray());
+                    new String[] {},
+                    ParamValidators.notNull());
 
     default String[] getFeaturesCols() {
         return get(FEATURES_COLS);

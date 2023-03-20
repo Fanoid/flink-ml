@@ -133,7 +133,7 @@ public class GBTRegressorTest extends AbstractTestBase {
     @Test
     public void testParam() {
         GBTRegressor gbtr = new GBTRegressor();
-        Assert.assertArrayEquals(new String[] {"features"}, gbtr.getFeaturesCols());
+        Assert.assertArrayEquals(new String[] {}, gbtr.getFeaturesCols());
         Assert.assertEquals("label", gbtr.getLabelCol());
         Assert.assertArrayEquals(new String[] {}, gbtr.getCategoricalCols());
         Assert.assertEquals("prediction", gbtr.getPredictionCol());

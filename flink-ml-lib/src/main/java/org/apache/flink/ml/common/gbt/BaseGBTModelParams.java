@@ -19,9 +19,7 @@
 package org.apache.flink.ml.common.gbt;
 
 import org.apache.flink.ml.classification.gbtclassifier.GBTClassifierModel;
-import org.apache.flink.ml.common.param.HasCategoricalCols;
 import org.apache.flink.ml.common.param.HasFeaturesCols;
-import org.apache.flink.ml.common.param.HasLabelCol;
 import org.apache.flink.ml.common.param.HasPredictionCol;
 import org.apache.flink.ml.regression.gbtregressor.GBTRegressorModel;
 
@@ -34,5 +32,4 @@ import org.apache.flink.ml.regression.gbtregressor.GBTRegressorModel;
  *
  * @param <T> The class type of this instance.
  */
-public interface BaseGBTModelParams<T>
-        extends HasFeaturesCols<T>, HasLabelCol<T>, HasCategoricalCols<T>, HasPredictionCol<T> {}
+public interface BaseGBTModelParams<T> extends HasFeaturesCols<T>, HasPredictionCol<T> {}
