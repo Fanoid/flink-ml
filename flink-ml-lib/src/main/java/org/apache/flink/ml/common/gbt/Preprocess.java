@@ -238,17 +238,19 @@ class Preprocess {
 
     /**
      * Discretize the vector column inplace using quantile discretizer, and obtains quantile
-     * discretizer model data..
+     * discretizer model data.
      */
     private static Tuple2<Table, DataStream<KBinsDiscretizerModelData>> discretizeVectorCol(
             Table dataTable, String vectorCol, int numBins) {
         final String outputCol = "_output_col";
+        // TODO: currently we set `subSamples` to 50000 to reduce memory usage.
         KBinsDiscretizer kBinsDiscretizer =
                 new KBinsDiscretizer()
                         .setInputCol(vectorCol)
                         .setOutputCol(outputCol)
                         .setStrategy("quantile")
-                        .setNumBins(numBins);
+                        .setNumBins(numBins)
+                        .setSubSamples(50000);
         KBinsDiscretizerModel model = kBinsDiscretizer.fit(dataTable);
         Table discretizedDataTable = model.transform(dataTable)[0];
         return Tuple2.of(
