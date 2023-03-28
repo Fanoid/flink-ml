@@ -123,6 +123,7 @@ public class KBinsDiscretizer
                             public void mapPartition(
                                     Iterable<DenseVector> iterable,
                                     Collector<KBinsDiscretizerModelData> collector) {
+                                long start = System.currentTimeMillis();
                                 List<DenseVector> list = new ArrayList<>();
                                 iterable.iterator().forEachRemaining(list::add);
 
@@ -149,6 +150,8 @@ public class KBinsDiscretizer
                                                         + strategy
                                                         + ".");
                                 }
+                                long elapsedTime = System.currentTimeMillis() - start;
+                                LOG.info("Find bin edges costs: {} ms.", elapsedTime);
 
                                 collector.collect(new KBinsDiscretizerModelData(binEdges));
                             }
