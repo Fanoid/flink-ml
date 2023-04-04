@@ -99,9 +99,8 @@ class BoostIterationBody implements IterationBody {
 
         PostSplitsOperator postSplitsOp = new PostSplitsOperator();
         SingleOutputStreamOperator<Integer> updatedModelData =
-                globalSplits
-                        .broadcast()
-                        .transform("PostSplits", TypeInformation.of(Integer.class), postSplitsOp);
+                globalSplits.transform(
+                        "PostSplits", TypeInformation.of(Integer.class), postSplitsOp);
         for (ItemDescriptor<?> descriptor : SharedStorageConstants.OWNED_BY_POST_SPLITS_OP) {
             ownerMap.put(descriptor, postSplitsOp.getSharedStorageAccessorID());
         }
