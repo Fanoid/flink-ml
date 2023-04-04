@@ -88,7 +88,7 @@ class MLLibTest(PyFlinkMLTestCase):
         pass
 
     def exclude_java_stage(self):
-        return []
+        return ['transform.TypeTransform']
 
 
 class ClassificationCompletenessTest(CompletenessTest, MLLibTest):
