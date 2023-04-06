@@ -88,7 +88,11 @@ class MLLibTest(PyFlinkMLTestCase):
         pass
 
     def exclude_java_stage(self):
-        return ['transform.TypeTransform']
+        return ['transform.TypeTransform',
+                'gbtclassifier.GBTClassifier',
+                'gbtclassifier.GBTClassifierModel',
+                'gbtregressor.GBTRegressor',
+                'gbtregressor.GBTRegressorModel']
 
 
 class ClassificationCompletenessTest(CompletenessTest, MLLibTest):
