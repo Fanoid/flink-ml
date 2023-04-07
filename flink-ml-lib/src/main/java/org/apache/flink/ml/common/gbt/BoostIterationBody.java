@@ -69,8 +69,6 @@ class BoostIterationBody implements IterationBody {
 
         Map<ItemDescriptor<?>, String> ownerMap = new HashMap<>();
 
-        // In 1st round, cache all data. For all rounds calculate local histogram based on
-        // current tree layer.
         CacheDataCalcLocalHistsOperator cacheDataCalcLocalHistsOp =
                 new CacheDataCalcLocalHistsOperator(strategy);
         SingleOutputStreamOperator<Tuple3<Integer, Integer, Histogram>> localHists =

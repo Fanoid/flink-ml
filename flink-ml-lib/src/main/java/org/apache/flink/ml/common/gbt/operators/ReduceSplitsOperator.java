@@ -110,6 +110,7 @@ public class ReduceSplitsOperator extends AbstractStreamOperator<Tuple2<Integer,
                     Preconditions.checkState(!featureMap.get(featureId));
                     featureMap.set(featureId);
                 });
+        nodeFeatureMap.put(nodeId, featureMap);
 
         nodeBestSplit.compute(nodeId, (k, v) -> null == v ? split : v.accumulate(split));
         if (featureMap.cardinality() == nodeFeatureCounter.get(nodeId)) {

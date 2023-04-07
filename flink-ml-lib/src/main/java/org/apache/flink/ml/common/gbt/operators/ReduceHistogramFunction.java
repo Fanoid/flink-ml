@@ -41,7 +41,7 @@ public class ReduceHistogramFunction
                 Tuple3<Integer, Integer, Histogram>, Tuple2<Integer, Histogram>> {
 
     private final Map<Integer, BitSet> pairAccepted = new HashMap<>();
-    private final Map<Integer, Histogram> pairAcc = new HashMap<>();
+    private final Map<Integer, Histogram> pairHistogram = new HashMap<>();
     private int numSubtasks;
 
     @Override
@@ -62,11 +62,11 @@ public class ReduceHistogramFunction
         accepted.set(sourceSubtaskId);
         pairAccepted.put(pairId, accepted);
 
-        pairAcc.compute(pairId, (k, v) -> null == v ? histogram : v.accumulate(histogram));
+        pairHistogram.compute(pairId, (k, v) -> null == v ? histogram : v.accumulate(histogram));
         if (numSubtasks == accepted.cardinality()) {
-            out.collect(Tuple2.of(pairId, pairAcc.get(pairId)));
+            out.collect(Tuple2.of(pairId, pairHistogram.get(pairId)));
             pairAccepted.remove(pairId);
-            pairAcc.remove(pairId);
+            pairHistogram.remove(pairId);
         }
     }
 }
