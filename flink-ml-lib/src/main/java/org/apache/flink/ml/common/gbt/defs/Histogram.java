@@ -25,14 +25,13 @@ import org.apache.flink.util.Preconditions;
 import java.io.Serializable;
 
 /**
- * This class stores values of histogram bins, and necessary information of reducing and scattering.
+ * This class stores values of histogram bins.
+ *
+ * <p>Note that only the part of {@link Histogram#hists} specified by {@link Histogram#slice} is
+ * valid.
  */
 @TypeInfo(HistogramTypeInfoFactory.class)
 public class Histogram implements Serializable {
-    // Stores source subtask ID.
-    public int subtaskId;
-    // Stores (nodeId, featureId) pair index.
-    public int pairId;
     // Stores values of histogram bins.
     public double[] hists;
     // Stores the valid slice of `hists`.
@@ -40,15 +39,12 @@ public class Histogram implements Serializable {
 
     public Histogram() {}
 
-    public Histogram(int subtaskId, int pairId, double[] hists, Slice slice) {
-        this.subtaskId = subtaskId;
-        this.pairId = pairId;
+    public Histogram(double[] hists, Slice slice) {
         this.hists = hists;
         this.slice = slice;
     }
 
     public Histogram accumulate(Histogram other) {
-        Preconditions.checkArgument(pairId == other.pairId);
         Preconditions.checkArgument(slice.size() == other.slice.size());
         for (int i = 0; i < slice.size(); i += 1) {
             hists[slice.start + i] += other.hists[other.slice.start + i];

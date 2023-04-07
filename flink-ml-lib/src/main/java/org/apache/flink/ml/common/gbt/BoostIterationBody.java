@@ -20,17 +20,19 @@ package org.apache.flink.ml.common.gbt;
 
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.typeinfo.Types;
+import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.iteration.DataStreamList;
 import org.apache.flink.iteration.IterationBody;
 import org.apache.flink.iteration.IterationBodyResult;
 import org.apache.flink.ml.common.gbt.defs.BoostingStrategy;
 import org.apache.flink.ml.common.gbt.defs.Histogram;
-import org.apache.flink.ml.common.gbt.defs.Splits;
+import org.apache.flink.ml.common.gbt.defs.Split;
 import org.apache.flink.ml.common.gbt.defs.TrainContext;
 import org.apache.flink.ml.common.gbt.operators.CacheDataCalcLocalHistsOperator;
 import org.apache.flink.ml.common.gbt.operators.CalcLocalSplitsOperator;
-import org.apache.flink.ml.common.gbt.operators.HistogramAggregateFunction;
 import org.apache.flink.ml.common.gbt.operators.PostSplitsOperator;
+import org.apache.flink.ml.common.gbt.operators.ReduceHistogramFunction;
 import org.apache.flink.ml.common.gbt.operators.ReduceSplitsOperator;
 import org.apache.flink.ml.common.gbt.operators.SharedStorageConstants;
 import org.apache.flink.ml.common.gbt.operators.TerminationOperator;
@@ -71,34 +73,32 @@ class BoostIterationBody implements IterationBody {
         // current tree layer.
         CacheDataCalcLocalHistsOperator cacheDataCalcLocalHistsOp =
                 new CacheDataCalcLocalHistsOperator(strategy);
-        SingleOutputStreamOperator<Histogram> localHists =
+        SingleOutputStreamOperator<Tuple3<Integer, Integer, Histogram>> localHists =
                 data.connect(trainContext)
                         .transform(
                                 "CacheDataCalcLocalHists",
-                                TypeInformation.of(Histogram.class),
+                                Types.TUPLE(
+                                        Types.INT, Types.INT, TypeInformation.of(Histogram.class)),
                                 cacheDataCalcLocalHistsOp);
         for (ItemDescriptor<?> s : SharedStorageConstants.OWNED_BY_CACHE_DATA_CALC_LOCAL_HISTS_OP) {
             ownerMap.put(s, cacheDataCalcLocalHistsOp.getSharedStorageAccessorID());
         }
 
-        DataStream<Histogram> globalHists =
-                localHists
-                        .partitionCustom(
-                                (key, numPartitions) -> key % numPartitions, value -> value.pairId)
-                        .flatMap(new HistogramAggregateFunction());
+        DataStream<Tuple2<Integer, Histogram>> globalHists =
+                localHists.keyBy(d -> d.f1).flatMap(new ReduceHistogramFunction());
 
-        SingleOutputStreamOperator<Splits> localSplits =
+        SingleOutputStreamOperator<Tuple3<Integer, Integer, Split>> localSplits =
                 globalHists.transform(
                         "CalcLocalSplits",
-                        TypeInformation.of(Splits.class),
+                        Types.TUPLE(Types.INT, Types.INT, TypeInformation.of(Split.class)),
                         new CalcLocalSplitsOperator());
 
-        DataStream<Splits> globalSplits =
+        DataStream<Tuple2<Integer, Split>> globalSplits =
                 localSplits
-                        .partitionCustom((key, numPartitions) -> key % numPartitions, d -> d.nodeId)
+                        .keyBy(d -> d.f0)
                         .transform(
                                 "ReduceGlobalSplits",
-                                TypeInformation.of(Splits.class),
+                                Types.TUPLE(Types.INT, TypeInformation.of(Split.class)),
                                 new ReduceSplitsOperator());
 
         PostSplitsOperator postSplitsOp = new PostSplitsOperator();

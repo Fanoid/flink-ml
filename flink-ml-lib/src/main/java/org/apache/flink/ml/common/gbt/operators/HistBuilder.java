@@ -18,6 +18,7 @@
 
 package org.apache.flink.ml.common.gbt.operators;
 
+import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.ml.common.gbt.DataUtils;
 import org.apache.flink.ml.common.gbt.defs.BinnedInstance;
 import org.apache.flink.ml.common.gbt.defs.FeatureMeta;
@@ -79,7 +80,7 @@ class HistBuilder {
             BinnedInstance[] instances,
             double[] pgh,
             Consumer<int[]> nodeFeaturePairsSetter,
-            Collector<Histogram> out) {
+            Collector<Tuple3<Integer, Integer, Histogram>> out) {
         LOG.info("subtaskId: {}, {} start", subtaskId, HistBuilder.class.getSimpleName());
         int numNodes = layer.size();
 
@@ -296,11 +297,9 @@ class HistBuilder {
             }
         }
 
-        /**
-         * Calculate histograms for all (nodeId, featureId) pairs. The results are written to
-         * `hists`, so `hists` must be large enough to store values.
-         */
-        private void calcHistsForPairs(int subtaskId, Collector<Histogram> out) {
+        /** Calculate histograms for all (nodeId, featureId) pairs. */
+        private void calcHistsForPairs(
+                int subtaskId, Collector<Tuple3<Integer, Integer, Histogram>> out) {
             long start = System.currentTimeMillis();
             int numNodes = layer.size();
             int offset = 0;
@@ -334,11 +333,12 @@ class HistBuilder {
                     int sliceSize = numFeatureBins[features[i]] * BIN_SIZE;
                     int pairId = pairBaseId + i;
                     out.collect(
-                            new Histogram(
+                            Tuple3.of(
                                     subtaskId,
                                     pairId,
-                                    nodeHists,
-                                    new Slice(sliceStart, sliceStart + sliceSize)));
+                                    new Histogram(
+                                            nodeHists,
+                                            new Slice(sliceStart, sliceStart + sliceSize))));
                     sliceStart += sliceSize;
                 }
                 pairBaseId += features.length;

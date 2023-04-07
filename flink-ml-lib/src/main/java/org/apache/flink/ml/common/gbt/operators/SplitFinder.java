@@ -18,6 +18,7 @@
 
 package org.apache.flink.ml.common.gbt.operators;
 
+import org.apache.flink.ml.common.gbt.DataUtils;
 import org.apache.flink.ml.common.gbt.defs.FeatureMeta;
 import org.apache.flink.ml.common.gbt.defs.Histogram;
 import org.apache.flink.ml.common.gbt.defs.LearningNode;
@@ -68,7 +69,8 @@ class SplitFinder {
         LOG.info("subtaskId: {}, {} start", subtaskId, SplitFinder.class.getSimpleName());
         Preconditions.checkState(node.depth < maxDepth || numLeaves + 2 <= maxNumLeaves);
         Preconditions.checkState(histogram.slice.start == 0);
-        splitters[featureId].reset(histogram.hists, new Slice(0, histogram.hists.length));
+        splitters[featureId].reset(
+                histogram.hists, new Slice(0, histogram.hists.length / DataUtils.BIN_SIZE));
         return splitters[featureId].bestSplit();
     }
 }

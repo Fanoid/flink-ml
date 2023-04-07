@@ -18,6 +18,7 @@
 
 package org.apache.flink.ml.common.gbt.operators;
 
+import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.typeutils.runtime.kryo.KryoSerializer;
 import org.apache.flink.iteration.IterationListener;
 import org.apache.flink.iteration.datacache.nonkeyed.ListStateWithCache;
@@ -26,7 +27,6 @@ import org.apache.flink.ml.common.gbt.defs.BinnedInstance;
 import org.apache.flink.ml.common.gbt.defs.LearningNode;
 import org.apache.flink.ml.common.gbt.defs.Node;
 import org.apache.flink.ml.common.gbt.defs.Split;
-import org.apache.flink.ml.common.gbt.defs.Splits;
 import org.apache.flink.ml.common.gbt.defs.TrainContext;
 import org.apache.flink.ml.common.sharedstorage.SharedStorageContext;
 import org.apache.flink.ml.common.sharedstorage.SharedStorageStreamOperator;
@@ -50,7 +50,7 @@ import java.util.UUID;
  * update instances scores after a tree is complete.
  */
 public class PostSplitsOperator extends AbstractStreamOperator<Integer>
-        implements OneInputStreamOperator<Splits, Integer>,
+        implements OneInputStreamOperator<Tuple2<Integer, Split>, Integer>,
                 IterationListener<Integer>,
                 SharedStorageStreamOperator {
 
@@ -197,7 +197,7 @@ public class PostSplitsOperator extends AbstractStreamOperator<Integer>
     }
 
     @Override
-    public void processElement(StreamRecord<Splits> element) throws Exception {
+    public void processElement(StreamRecord<Tuple2<Integer, Split>> element) throws Exception {
         if (null == nodeSplits) {
             sharedStorageContext.invoke(
                     (getter, setter) -> {
@@ -206,8 +206,10 @@ public class PostSplitsOperator extends AbstractStreamOperator<Integer>
                         nodeSplits = new Split[numNodes];
                     });
         }
-        Splits splits = element.getValue();
-        nodeSplits[splits.nodeId] = splits.split;
+        Tuple2<Integer, Split> value = element.getValue();
+        int nodeId = value.f0;
+        Split split = value.f1;
+        nodeSplits[nodeId] = split;
     }
 
     @Override

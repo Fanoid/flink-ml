@@ -19,6 +19,8 @@
 package org.apache.flink.ml.common.gbt.operators;
 
 import org.apache.flink.api.common.functions.RichFlatMapFunction;
+import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.ml.common.gbt.defs.Histogram;
 import org.apache.flink.util.Collector;
@@ -28,8 +30,15 @@ import java.util.BitSet;
 import java.util.HashMap;
 import java.util.Map;
 
-/** Aggregation function for merging histograms. */
-public class HistogramAggregateFunction extends RichFlatMapFunction<Histogram, Histogram> {
+/**
+ * This operator reduces histograms for (nodeId, featureId) pairs.
+ *
+ * <p>The input elements are tuples of (subtask index, (nodeId, featureId) pair index, Histogram).
+ * The output elements are tuples of ((nodeId, featureId) pair index, Histogram).
+ */
+public class ReduceHistogramFunction
+        extends RichFlatMapFunction<
+                Tuple3<Integer, Integer, Histogram>, Tuple2<Integer, Histogram>> {
 
     private final Map<Integer, BitSet> pairAccepted = new HashMap<>();
     private final Map<Integer, Histogram> pairAcc = new HashMap<>();
@@ -41,20 +50,21 @@ public class HistogramAggregateFunction extends RichFlatMapFunction<Histogram, H
     }
 
     @Override
-    public void flatMap(Histogram value, Collector<Histogram> out) throws Exception {
-        int pairId = value.pairId;
-        int fromSubtaskId = value.subtaskId;
+    public void flatMap(
+            Tuple3<Integer, Integer, Histogram> value, Collector<Tuple2<Integer, Histogram>> out)
+            throws Exception {
+        int sourceSubtaskId = value.f0;
+        int pairId = value.f1;
+        Histogram histogram = value.f2;
 
         BitSet accepted = pairAccepted.getOrDefault(pairId, new BitSet(numSubtasks));
-        Preconditions.checkState(!accepted.get(fromSubtaskId));
-        accepted.set(fromSubtaskId);
+        Preconditions.checkState(!accepted.get(sourceSubtaskId));
+        accepted.set(sourceSubtaskId);
         pairAccepted.put(pairId, accepted);
 
-        pairAcc.compute(pairId, (k, v) -> null == v ? value : v.accumulate(value));
+        pairAcc.compute(pairId, (k, v) -> null == v ? histogram : v.accumulate(histogram));
         if (numSubtasks == accepted.cardinality()) {
-            Histogram acc = pairAcc.get(pairId);
-            acc.subtaskId = getRuntimeContext().getIndexOfThisSubtask();
-            out.collect(acc);
+            out.collect(Tuple2.of(pairId, pairAcc.get(pairId)));
             pairAccepted.remove(pairId);
             pairAcc.remove(pairId);
         }

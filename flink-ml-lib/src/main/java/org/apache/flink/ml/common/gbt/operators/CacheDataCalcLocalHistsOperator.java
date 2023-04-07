@@ -18,6 +18,7 @@
 
 package org.apache.flink.ml.common.gbt.operators;
 
+import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.api.java.typeutils.runtime.kryo.KryoSerializer;
 import org.apache.flink.iteration.IterationListener;
 import org.apache.flink.iteration.datacache.nonkeyed.ListStateWithCache;
@@ -50,12 +51,16 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Calculates local histograms for local data partition. Specifically in the first round, this
- * operator caches all data instances to JVM static region.
+ * Calculates local histograms for local data partition.
+ *
+ * <p>This operator only has input elements in the first round, including data instances and raw
+ * training context. There will be no input elements in other rounds. The output elements are tuples
+ * of (subtask index, (nodeId, featureId) pair index, Histogram).
  */
-public class CacheDataCalcLocalHistsOperator extends AbstractStreamOperator<Histogram>
-        implements TwoInputStreamOperator<Row, TrainContext, Histogram>,
-                IterationListener<Histogram>,
+public class CacheDataCalcLocalHistsOperator
+        extends AbstractStreamOperator<Tuple3<Integer, Integer, Histogram>>
+        implements TwoInputStreamOperator<Row, TrainContext, Tuple3<Integer, Integer, Histogram>>,
+                IterationListener<Tuple3<Integer, Integer, Histogram>>,
                 SharedStorageStreamOperator {
 
     private static final String TREE_INITIALIZER_STATE_NAME = "tree_initializer";
@@ -152,9 +157,9 @@ public class CacheDataCalcLocalHistsOperator extends AbstractStreamOperator<Hist
                         setter.set(SharedStorageConstants.TRAIN_CONTEXT, rawTrainContext));
     }
 
-    @Override
     public void onEpochWatermarkIncremented(
-            int epochWatermark, Context context, Collector<Histogram> out) throws Exception {
+            int epochWatermark, Context context, Collector<Tuple3<Integer, Integer, Histogram>> out)
+            throws Exception {
         if (0 == epochWatermark) {
             // Initializes local state in first round.
             sharedStorageContext.invoke(
@@ -237,7 +242,8 @@ public class CacheDataCalcLocalHistsOperator extends AbstractStreamOperator<Hist
     }
 
     @Override
-    public void onIterationTerminated(Context context, Collector<Histogram> collector)
+    public void onIterationTerminated(
+            Context context, Collector<Tuple3<Integer, Integer, Histogram>> collector)
             throws Exception {
         instancesCollecting.clear();
         treeInitializerState.clear();
