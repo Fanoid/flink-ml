@@ -18,38 +18,45 @@
 
 package org.apache.flink.ml.common.gbt.operators;
 
-import org.apache.flink.api.common.functions.AggregateFunction;
 import org.apache.flink.api.common.functions.RichFlatMapFunction;
+import org.apache.flink.configuration.Configuration;
 import org.apache.flink.ml.common.gbt.defs.Histogram;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.Preconditions;
 
 import java.util.BitSet;
+import java.util.HashMap;
+import java.util.Map;
 
 /** Aggregation function for merging histograms. */
 public class HistogramAggregateFunction extends RichFlatMapFunction<Histogram, Histogram> {
 
-    private final AggregateFunction<Histogram, Histogram, Histogram> aggregator =
-            new Histogram.Aggregator();
+    private final Map<Integer, BitSet> pairAccepted = new HashMap<>();
+    private final Map<Integer, Histogram> pairAcc = new HashMap<>();
     private int numSubtasks;
-    private BitSet accepted;
-    private Histogram acc = null;
+
+    @Override
+    public void open(Configuration parameters) throws Exception {
+        numSubtasks = getRuntimeContext().getNumberOfParallelSubtasks();
+    }
 
     @Override
     public void flatMap(Histogram value, Collector<Histogram> out) throws Exception {
-        if (null == accepted) {
-            numSubtasks = getRuntimeContext().getNumberOfParallelSubtasks();
-            accepted = new BitSet(numSubtasks);
-        }
-        int receivedSubtaskId = value.subtaskId;
-        Preconditions.checkState(!accepted.get(receivedSubtaskId));
-        accepted.set(receivedSubtaskId);
-        acc = aggregator.add(value, acc);
+        int pairId = value.pairId;
+        int fromSubtaskId = value.subtaskId;
+
+        BitSet accepted = pairAccepted.getOrDefault(pairId, new BitSet(numSubtasks));
+        Preconditions.checkState(!accepted.get(fromSubtaskId));
+        accepted.set(fromSubtaskId);
+        pairAccepted.put(pairId, accepted);
+
+        pairAcc.compute(pairId, (k, v) -> null == v ? value : v.accumulate(value));
         if (numSubtasks == accepted.cardinality()) {
+            Histogram acc = pairAcc.get(pairId);
             acc.subtaskId = getRuntimeContext().getIndexOfThisSubtask();
             out.collect(acc);
-            accepted = null;
-            acc = null;
+            pairAccepted.remove(pairId);
+            pairAcc.remove(pairId);
         }
     }
 }

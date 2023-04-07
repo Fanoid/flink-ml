@@ -20,7 +20,6 @@ package org.apache.flink.ml.common.gbt.typeinfo;
 
 import org.apache.flink.api.common.typeutils.SimpleTypeSerializerSnapshot;
 import org.apache.flink.api.common.typeutils.TypeSerializerSnapshot;
-import org.apache.flink.api.common.typeutils.base.IntSerializer;
 import org.apache.flink.api.common.typeutils.base.TypeSerializerSingleton;
 import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataOutputView;
@@ -55,6 +54,7 @@ public final class HistogramSerializer extends TypeSerializerSingleton<Histogram
     public Histogram copy(Histogram from) {
         Histogram histogram = new Histogram();
         histogram.subtaskId = from.subtaskId;
+        histogram.pairId = from.pairId;
         histogram.hists = ArrayUtils.subarray(from.hists, from.slice.start, from.slice.end);
         histogram.slice.start = 0;
         histogram.slice.end = from.slice.size();
@@ -74,6 +74,7 @@ public final class HistogramSerializer extends TypeSerializerSingleton<Histogram
     @Override
     public void serialize(Histogram record, DataOutputView target) throws IOException {
         target.writeInt(record.subtaskId);
+        target.writeInt(record.pairId);
         // Only writes valid slice of `hists`.
         histsSerializer.serialize(record.hists, record.slice.start, record.slice.size(), target);
     }
@@ -81,7 +82,8 @@ public final class HistogramSerializer extends TypeSerializerSingleton<Histogram
     @Override
     public Histogram deserialize(DataInputView source) throws IOException {
         Histogram histogram = new Histogram();
-        histogram.subtaskId = IntSerializer.INSTANCE.deserialize(source);
+        histogram.subtaskId = source.readInt();
+        histogram.pairId = source.readInt();
         histogram.hists = histsSerializer.deserialize(source);
         histogram.slice = new Slice(0, histogram.hists.length);
         return histogram;
@@ -89,7 +91,8 @@ public final class HistogramSerializer extends TypeSerializerSingleton<Histogram
 
     @Override
     public Histogram deserialize(Histogram reuse, DataInputView source) throws IOException {
-        reuse.subtaskId = IntSerializer.INSTANCE.deserialize(source);
+        reuse.subtaskId = source.readInt();
+        reuse.pairId = source.readInt();
         reuse.hists = histsSerializer.deserialize(reuse.hists, source);
         reuse.slice.start = 0;
         reuse.slice.end = reuse.hists.length;

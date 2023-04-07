@@ -18,66 +18,41 @@
 
 package org.apache.flink.ml.common.gbt.defs;
 
-import org.apache.flink.api.common.functions.AggregateFunction;
+import org.apache.flink.util.Preconditions;
 
 /**
  * This class stores splits of nodes in the current layer, and necessary information of
- * all-reducing..
+ * all-reducing.
  */
 public class Splits {
-
-    // Stores source subtask ID when reducing or target subtask ID when scattering.
-    public int subtaskId;
-    // Stores splits of nodes in the current layer.
-    public Split[] splits;
+    // Stores (nodeId, featureId) pair index.
+    public int pairId;
+    // Stores node index in the current layer.
+    public int nodeId;
+    // Stores split of (nodeId, featureId) pair.
+    public Split split;
 
     public Splits() {}
 
-    public Splits(int subtaskId, Split[] splits) {
-        this.subtaskId = subtaskId;
-        this.splits = splits;
+    public Splits(int pairId, int nodeId, Split split) {
+        this.pairId = pairId;
+        this.nodeId = nodeId;
+        this.split = split;
     }
 
-    private Splits accumulate(Splits other) {
-        for (int i = 0; i < splits.length; ++i) {
-            if (splits[i] == null && other.splits[i] != null) {
-                splits[i] = other.splits[i];
-            } else if (splits[i] != null && other.splits[i] != null) {
-                if (splits[i].gain < other.splits[i].gain) {
-                    splits[i] = other.splits[i];
-                } else if (splits[i].gain == other.splits[i].gain) {
-                    if (splits[i].featureId < other.splits[i].featureId) {
-                        splits[i] = other.splits[i];
-                    }
+    public Splits accumulate(Splits other) {
+        Preconditions.checkArgument(nodeId == other.nodeId);
+        if (split == null && other.split != null) {
+            split = other.split;
+        } else if (split != null && other.split != null) {
+            if (split.gain < other.split.gain) {
+                split = other.split;
+            } else if (split.gain == other.split.gain) {
+                if (split.featureId < other.split.featureId) {
+                    split = other.split;
                 }
             }
         }
         return this;
-    }
-
-    /** Aggregator for Splits. */
-    public static class Aggregator implements AggregateFunction<Splits, Splits, Splits> {
-        @Override
-        public Splits createAccumulator() {
-            return null;
-        }
-
-        @Override
-        public Splits add(Splits value, Splits accumulator) {
-            if (null == accumulator) {
-                return value;
-            }
-            return accumulator.accumulate(value);
-        }
-
-        @Override
-        public Splits getResult(Splits accumulator) {
-            return accumulator;
-        }
-
-        @Override
-        public Splits merge(Splits a, Splits b) {
-            return a.accumulate(b);
-        }
     }
 }

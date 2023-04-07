@@ -19,11 +19,11 @@
 package org.apache.flink.ml.common.gbt.operators;
 
 import org.apache.flink.api.java.typeutils.runtime.kryo.KryoSerializer;
-import org.apache.flink.iteration.IterationListener;
 import org.apache.flink.iteration.datacache.nonkeyed.ListStateWithCache;
 import org.apache.flink.iteration.operator.OperatorStateUtils;
 import org.apache.flink.ml.common.gbt.defs.Histogram;
 import org.apache.flink.ml.common.gbt.defs.LearningNode;
+import org.apache.flink.ml.common.gbt.defs.Split;
 import org.apache.flink.ml.common.gbt.defs.Splits;
 import org.apache.flink.ml.common.sharedstorage.SharedStorageContext;
 import org.apache.flink.ml.common.sharedstorage.SharedStorageStreamOperator;
@@ -32,7 +32,9 @@ import org.apache.flink.runtime.state.StateSnapshotContext;
 import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
-import org.apache.flink.util.Collector;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Collections;
 import java.util.List;
@@ -40,10 +42,9 @@ import java.util.UUID;
 
 /** Calculates local splits for assigned (nodeId, featureId) pairs. */
 public class CalcLocalSplitsOperator extends AbstractStreamOperator<Splits>
-        implements OneInputStreamOperator<Histogram, Splits>,
-                IterationListener<Splits>,
-                SharedStorageStreamOperator {
+        implements OneInputStreamOperator<Histogram, Splits>, SharedStorageStreamOperator {
 
+    private static final Logger LOG = LoggerFactory.getLogger(CalcLocalSplitsOperator.class);
     private static final String SPLIT_FINDER_STATE_NAME = "split_finder";
     private final String sharedStorageAccessorID;
     // States of local data.
@@ -79,10 +80,6 @@ public class CalcLocalSplitsOperator extends AbstractStreamOperator<Splits>
     }
 
     @Override
-    public void onEpochWatermarkIncremented(
-            int epochWatermark, Context context, Collector<Splits> collector) {}
-
-    @Override
     public void processElement(StreamRecord<Histogram> element) throws Exception {
         if (null == splitFinder) {
             sharedStorageContext.invoke(
@@ -102,18 +99,26 @@ public class CalcLocalSplitsOperator extends AbstractStreamOperator<Splits>
                                 Collections.singletonList(
                                         getter.get(SharedStorageConstants.ROOT_LEARNING_NODE));
                     }
-                    Splits splits =
+
+                    int[] nodeFeaturePairs = getter.get(SharedStorageConstants.NODE_FEATURE_PAIRS);
+                    int pairId = histogram.pairId;
+                    int nodeId = nodeFeaturePairs[2 * pairId];
+                    int featureId = nodeFeaturePairs[2 * pairId + 1];
+                    LearningNode node = layer.get(nodeId);
+
+                    Split bestSplit =
                             splitFinder.calc(
-                                    layer,
-                                    getter.get(SharedStorageConstants.NODE_FEATURE_PAIRS),
+                                    node,
+                                    featureId,
                                     getter.get(SharedStorageConstants.LEAVES).size(),
                                     histogram);
-                    output.collect(new StreamRecord<>(splits));
+                    output.collect(new StreamRecord<>(new Splits(pairId, nodeId, bestSplit)));
                 });
     }
 
     @Override
-    public void onIterationTerminated(Context context, Collector<Splits> collector) {
+    public void close() throws Exception {
+        super.close();
         splitFinderState.clear();
     }
 

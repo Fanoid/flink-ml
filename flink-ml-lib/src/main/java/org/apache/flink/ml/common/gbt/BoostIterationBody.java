@@ -18,10 +18,8 @@
 
 package org.apache.flink.ml.common.gbt;
 
-import org.apache.flink.api.common.typeinfo.TypeHint;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.typeinfo.Types;
-import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.iteration.DataStreamList;
 import org.apache.flink.iteration.IterationBody;
 import org.apache.flink.iteration.IterationBodyResult;
@@ -33,8 +31,8 @@ import org.apache.flink.ml.common.gbt.operators.CacheDataCalcLocalHistsOperator;
 import org.apache.flink.ml.common.gbt.operators.CalcLocalSplitsOperator;
 import org.apache.flink.ml.common.gbt.operators.HistogramAggregateFunction;
 import org.apache.flink.ml.common.gbt.operators.PostSplitsOperator;
+import org.apache.flink.ml.common.gbt.operators.ReduceSplitsOperator;
 import org.apache.flink.ml.common.gbt.operators.SharedStorageConstants;
-import org.apache.flink.ml.common.gbt.operators.SplitsAggregateFunction;
 import org.apache.flink.ml.common.gbt.operators.TerminationOperator;
 import org.apache.flink.ml.common.sharedstorage.ItemDescriptor;
 import org.apache.flink.ml.common.sharedstorage.SharedStorageBody;
@@ -73,11 +71,11 @@ class BoostIterationBody implements IterationBody {
         // current tree layer.
         CacheDataCalcLocalHistsOperator cacheDataCalcLocalHistsOp =
                 new CacheDataCalcLocalHistsOperator(strategy);
-        SingleOutputStreamOperator<Tuple2<Integer, Histogram>> localHists =
+        SingleOutputStreamOperator<Histogram> localHists =
                 data.connect(trainContext)
                         .transform(
                                 "CacheDataCalcLocalHists",
-                                new TypeHint<Tuple2<Integer, Histogram>>() {}.getTypeInfo(),
+                                TypeInformation.of(Histogram.class),
                                 cacheDataCalcLocalHistsOp);
         for (ItemDescriptor<?> s : SharedStorageConstants.OWNED_BY_CACHE_DATA_CALC_LOCAL_HISTS_OP) {
             ownerMap.put(s, cacheDataCalcLocalHistsOp.getSharedStorageAccessorID());
@@ -85,8 +83,8 @@ class BoostIterationBody implements IterationBody {
 
         DataStream<Histogram> globalHists =
                 localHists
-                        .partitionCustom((key, numPartitions) -> key, value -> value.f0)
-                        .map(d -> d.f1)
+                        .partitionCustom(
+                                (key, numPartitions) -> key % numPartitions, value -> value.pairId)
                         .flatMap(new HistogramAggregateFunction());
 
         SingleOutputStreamOperator<Splits> localSplits =
@@ -94,13 +92,20 @@ class BoostIterationBody implements IterationBody {
                         "CalcLocalSplits",
                         TypeInformation.of(Splits.class),
                         new CalcLocalSplitsOperator());
+
         DataStream<Splits> globalSplits =
-                localSplits.broadcast().flatMap(new SplitsAggregateFunction());
+                localSplits
+                        .partitionCustom((key, numPartitions) -> key % numPartitions, d -> d.nodeId)
+                        .transform(
+                                "ReduceGlobalSplits",
+                                TypeInformation.of(Splits.class),
+                                new ReduceSplitsOperator());
 
         PostSplitsOperator postSplitsOp = new PostSplitsOperator();
         SingleOutputStreamOperator<Integer> updatedModelData =
-                globalSplits.transform(
-                        "PostSplits", TypeInformation.of(Integer.class), postSplitsOp);
+                globalSplits
+                        .broadcast()
+                        .transform("PostSplits", TypeInformation.of(Integer.class), postSplitsOp);
         for (ItemDescriptor<?> descriptor : SharedStorageConstants.OWNED_BY_POST_SPLITS_OP) {
             ownerMap.put(descriptor, postSplitsOp.getSharedStorageAccessorID());
         }
@@ -117,7 +122,7 @@ class BoostIterationBody implements IterationBody {
 
         return new SharedStorageBody.SharedStorageBodyResult(
                 Arrays.asList(updatedModelData, finalModelData, termination),
-                Arrays.asList(localHists, localSplits, updatedModelData, termination),
+                Arrays.asList(localHists, localSplits, globalSplits, updatedModelData, termination),
                 ownerMap);
     }
 
