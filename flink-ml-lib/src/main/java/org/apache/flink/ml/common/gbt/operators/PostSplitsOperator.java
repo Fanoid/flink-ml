@@ -209,6 +209,7 @@ public class PostSplitsOperator extends AbstractStreamOperator<Integer>
         Tuple2<Integer, Split> value = element.getValue();
         int nodeId = value.f0;
         Split split = value.f1;
+        LOG.info("Received split for node {}", nodeId);
         nodeSplits[nodeId] = split;
     }
 

@@ -26,6 +26,9 @@ import org.apache.flink.ml.common.gbt.defs.Histogram;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.Preconditions;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.BitSet;
 import java.util.HashMap;
 import java.util.Map;
@@ -39,6 +42,8 @@ import java.util.Map;
 public class ReduceHistogramFunction
         extends RichFlatMapFunction<
                 Tuple3<Integer, Integer, Histogram>, Tuple2<Integer, Histogram>> {
+
+    private static final Logger LOG = LoggerFactory.getLogger(ReduceHistogramFunction.class);
 
     private final Map<Integer, BitSet> pairAccepted = new HashMap<>();
     private final Map<Integer, Histogram> pairHistogram = new HashMap<>();
@@ -58,6 +63,9 @@ public class ReduceHistogramFunction
         Histogram histogram = value.f2;
 
         BitSet accepted = pairAccepted.getOrDefault(pairId, new BitSet(numSubtasks));
+        if (accepted.isEmpty()) {
+            LOG.info("Received histogram for new pair {}", pairId);
+        }
         Preconditions.checkState(!accepted.get(sourceSubtaskId));
         accepted.set(sourceSubtaskId);
         pairAccepted.put(pairId, accepted);
@@ -65,6 +73,7 @@ public class ReduceHistogramFunction
         pairHistogram.compute(pairId, (k, v) -> null == v ? histogram : v.accumulate(histogram));
         if (numSubtasks == accepted.cardinality()) {
             out.collect(Tuple2.of(pairId, pairHistogram.get(pairId)));
+            LOG.info("Output accumulated histogram for pair {}", pairId);
             pairAccepted.remove(pairId);
             pairHistogram.remove(pairId);
         }

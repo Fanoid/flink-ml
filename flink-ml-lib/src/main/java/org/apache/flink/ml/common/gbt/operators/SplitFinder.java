@@ -30,20 +30,12 @@ import org.apache.flink.ml.common.gbt.splitter.ContinuousFeatureSplitter;
 import org.apache.flink.ml.common.gbt.splitter.HistogramFeatureSplitter;
 import org.apache.flink.util.Preconditions;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 class SplitFinder {
-    private static final Logger LOG = LoggerFactory.getLogger(SplitFinder.class);
-
-    private final int subtaskId;
     private final HistogramFeatureSplitter[] splitters;
     private final int maxDepth;
     private final int maxNumLeaves;
 
     public SplitFinder(TrainContext trainContext) {
-        subtaskId = trainContext.subtaskId;
-
         FeatureMeta[] featureMetas = trainContext.featureMetas;
         int numFeatures = trainContext.numFeatures;
         splitters = new HistogramFeatureSplitter[numFeatures + 1];
@@ -66,7 +58,6 @@ class SplitFinder {
     }
 
     public Split calc(LearningNode node, int featureId, int numLeaves, Histogram histogram) {
-        LOG.info("subtaskId: {}, {} start", subtaskId, SplitFinder.class.getSimpleName());
         Preconditions.checkState(node.depth < maxDepth || numLeaves + 2 <= maxNumLeaves);
         Preconditions.checkState(histogram.slice.start == 0);
         splitters[featureId].reset(
