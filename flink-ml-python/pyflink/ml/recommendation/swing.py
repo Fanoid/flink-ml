@@ -17,15 +17,16 @@
 ################################################################################
 import typing
 
-from pyflink.ml.common.param import HasOutputCol
-from pyflink.ml.param import Param, StringParam, IntParam, FloatParam, ParamValidators
+from pyflink.ml.common.param import HasOutputCol, HasSeed
+from pyflink.ml.param import Param, StringParam, IntParam, FloatParam, ParamValidators, BooleanParam
 from pyflink.ml.recommendation.common import JavaRecommendationAlgoOperator
 from pyflink.ml.wrapper import JavaWithParams
 
 
 class _SwingParams(
     JavaWithParams,
-    HasOutputCol
+    HasOutputCol,
+    HasSeed
 ):
     """
     Params for :class:`Swing`.
@@ -91,8 +92,12 @@ class _SwingParams(
         "beta",
         "Decay factor for number of users that have purchased one item. The higher beta is, the "
         + "less purchasing behavior contributes to the similarity score.",
-        0.3,
-        ParamValidators.gt_eq(0))
+        0.3)
+
+    NORMALIZE_RESULT: Param[bool] = BoolParam(
+        "normalizeResult",
+        "Whether to normalize the output to be between 0 and 1.",
+        False)
 
     def __init__(self, java_params):
         super(_SwingParams, self).__init__(java_params)
@@ -151,6 +156,12 @@ class _SwingParams(
     def get_beta(self) -> float:
         return self.get(self.BETA)
 
+    def set_normalize_result(self, value: bool):
+            return typing.cast(_SwingParams, self.set(self.NORMALIZE_RESULT, value))
+
+    def get_normalize_result(self) -> bool:
+        return self.get(self.NORMALIZE_RESULT)
+
     @property
     def user_col(self) -> str:
         return self.get_user_col()
@@ -186,6 +197,10 @@ class _SwingParams(
     @property
     def beta(self) -> float:
         return self.get_beta()
+
+    @property
+    def normalize_result(self) -> bool:
+        return self.get_normalize_result()
 
 
 class Swing(JavaRecommendationAlgoOperator, _SwingParams):

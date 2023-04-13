@@ -42,6 +42,9 @@ import java.util.Comparator;
 import java.util.List;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 /** Tests {@link Swing}. */
@@ -85,23 +88,31 @@ public class SwingTest {
                                         new String[] {"user", "item"})));
     }
 
-    private void compareResultAndExpected(List<Row> results) {
-        List<Row> expectedScoreRows =
-                new ArrayList<>(
-                        Arrays.asList(
-                                Row.of(10L, "11,0.058845768947156235;12,0.058845768947156235"),
-                                Row.of(11L, "10,0.058845768947156235;12,0.058845768947156235"),
-                                Row.of(
-                                        12L,
-                                        "13,0.09134833828228624;10,0.058845768947156235;11,0.058845768947156235"),
-                                Row.of(13L, "12,0.09134833828228624")));
+    private final List<Row> expectedScoreRows =
+            new ArrayList<>(
+                    Arrays.asList(
+                            Row.of(10L, "11,0.058845768947156235;12,0.058845768947156235"),
+                            Row.of(11L, "10,0.058845768947156235;12,0.058845768947156235"),
+                            Row.of(
+                                    12L,
+                                    "13,0.09134833828228624;10,0.058845768947156235;11,0.058845768947156235"),
+                            Row.of(13L, "12,0.09134833828228624")));
 
+    private final List<Row> expectedNormalizedScoreRows =
+            new ArrayList<>(
+                    Arrays.asList(
+                            Row.of(10L, "11,1.0;12,1.0"),
+                            Row.of(11L, "10,1.0;12,1.0"),
+                            Row.of(12L, "13,1.0;10,0.6515355257478657;11,0.6515355257478657"),
+                            Row.of(13L, "12,1.0")));
+
+    private void compareResultAndExpected(List<Row> expectResult, List<Row> results) {
         results.sort(Comparator.comparing(o -> o.getFieldAs(0)));
 
         for (int i = 0; i < results.size(); i++) {
             Row result = results.get(i);
             String itemRankScore = result.getFieldAs(1);
-            Row expect = expectedScoreRows.get(i);
+            Row expect = expectResult.get(i);
             assertEquals(expect.getField(0), result.getField(0));
             assertEquals(expect.getField(1), itemRankScore);
         }
@@ -120,6 +131,8 @@ public class SwingTest {
         assertEquals(15, swing.getAlpha1());
         assertEquals(0, swing.getAlpha2());
         assertEquals(0.3, swing.getBeta(), 1e-9);
+        assertEquals(swing.getClass().getName().hashCode(), swing.getSeed());
+        assertFalse(swing.getNormalizeResult());
 
         swing.setItemCol("item_1")
                 .setUserCol("user_1")
@@ -129,7 +142,9 @@ public class SwingTest {
                 .setMaxUserBehavior(50)
                 .setAlpha1(5)
                 .setAlpha2(1)
-                .setBeta(0.35);
+                .setBeta(0.35)
+                .setSeed(1)
+                .setNormalizeResult(true);
 
         assertEquals("item_1", swing.getItemCol());
         assertEquals("user_1", swing.getUserCol());
@@ -140,6 +155,8 @@ public class SwingTest {
         assertEquals(5, swing.getAlpha1());
         assertEquals(1, swing.getAlpha2());
         assertEquals(0.35, swing.getBeta(), 1e-9);
+        assertEquals(1, swing.getSeed());
+        assertTrue(swing.getNormalizeResult());
     }
 
     @Test
@@ -215,17 +232,38 @@ public class SwingTest {
         Table[] swingResultTables = swing.transform(inputTable);
         Table outputTable = swingResultTables[0];
         List<Row> results = IteratorUtils.toList(outputTable.execute().collect());
-        compareResultAndExpected(results);
+        compareResultAndExpected(expectedScoreRows, results);
+    }
+
+    @Test
+    public void testNormalize() {
+        Swing swing = new Swing().setMinUserBehavior(1).setNormalizeResult(true);
+        Table[] swingResultTables = swing.transform(inputTable);
+        Table outputTable = swingResultTables[0];
+        List<Row> results = IteratorUtils.toList(outputTable.execute().collect());
+        compareResultAndExpected(expectedNormalizedScoreRows, results);
     }
 
     @Test
     public void testSaveLoadAndTransform() throws Exception {
-        Swing swing = new Swing().setMinUserBehavior(1);
+        Swing swing = new Swing().setMinUserBehavior(2).setMaxUserBehavior(3);
         Swing loadedSwing =
                 TestUtils.saveAndReload(
                         tEnv, swing, tempFolder.newFolder().getAbsolutePath(), Swing::load);
         Table outputTable = loadedSwing.transform(inputTable)[0];
         List<Row> results = IteratorUtils.toList(outputTable.execute().collect());
-        compareResultAndExpected(results);
+        compareResultAndExpected(expectedScoreRows, results);
+    }
+
+    @Test
+    public void testSamplingMethod() {
+        env.setParallelism(1);
+        Swing swing1 = new Swing().setMinUserBehavior(1).setMaxUserNumPerItem(2).setSeed(3);
+        Swing swing2 = new Swing().setMinUserBehavior(1).setMaxUserNumPerItem(2);
+        Table[] result1 = swing1.transform(inputTable);
+        Table[] result2 = swing2.transform(inputTable);
+        int result1Size = IteratorUtils.toList(result1[0].execute().collect()).size();
+        int result2Size = IteratorUtils.toList(result2[0].execute().collect()).size();
+        assertNotEquals(result1Size, result2Size);
     }
 }

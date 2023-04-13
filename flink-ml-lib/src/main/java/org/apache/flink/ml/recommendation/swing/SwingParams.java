@@ -19,6 +19,8 @@
 package org.apache.flink.ml.recommendation.swing;
 
 import org.apache.flink.ml.common.param.HasOutputCol;
+import org.apache.flink.ml.common.param.HasSeed;
+import org.apache.flink.ml.param.BooleanParam;
 import org.apache.flink.ml.param.DoubleParam;
 import org.apache.flink.ml.param.IntParam;
 import org.apache.flink.ml.param.Param;
@@ -31,7 +33,7 @@ import org.apache.flink.ml.param.WithParams;
  *
  * @param <T> The class type of this instance.
  */
-public interface SwingParams<T> extends WithParams<T>, HasOutputCol<T> {
+public interface SwingParams<T> extends WithParams<T>, HasOutputCol<T>, HasSeed<T> {
     Param<String> USER_COL =
             new StringParam("userCol", "User column name.", "user", ParamValidators.notNull());
 
@@ -91,8 +93,13 @@ public interface SwingParams<T> extends WithParams<T>, HasOutputCol<T> {
                     "beta",
                     "Decay factor for number of users that have purchased one item. The higher beta is, the less "
                             + "purchasing behavior contributes to the similarity score.",
-                    0.3,
-                    ParamValidators.gtEq(0));
+                    0.3);
+
+    Param<Boolean> NORMALIZE_RESULT =
+            new BooleanParam(
+                    "normalizeResult",
+                    "Whether to normalize the output to be between 0 and 1.",
+                    false);
 
     default String getUserCol() {
         return get(USER_COL);
@@ -164,5 +171,13 @@ public interface SwingParams<T> extends WithParams<T>, HasOutputCol<T> {
 
     default T setBeta(Double value) {
         return set(BETA, value);
+    }
+
+    default boolean getNormalizeResult() {
+        return get(NORMALIZE_RESULT);
+    }
+
+    default T setNormalizeResult(Boolean value) {
+        return set(NORMALIZE_RESULT, value);
     }
 }

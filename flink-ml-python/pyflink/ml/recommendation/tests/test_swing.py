@@ -73,6 +73,12 @@ class SwingTest(PyFlinkMLTestCase):
             [12, '13,0.09134833828228624;10,0.058845768947156235;11,0.058845768947156235'],
             [13, '12,0.09134833828228624']]
 
+        self.expected_normalized_data = [
+            [10, '11,1.0;12,1.0'],
+            [11, '10,1.0;12,1.0'],
+            [12, '13,1.0;10,0.6515355257478657;11,0.6515355257478657'],
+            [13, '12,1.0']]
+
     def test_param(self):
         swing = Swing()
         self.assertEqual("item", swing.item_col)
@@ -84,16 +90,20 @@ class SwingTest(PyFlinkMLTestCase):
         self.assertEqual(15, swing.alpha1)
         self.assertEqual(0, swing.alpha2)
         self.assertAlmostEqual(0.3, swing.beta, delta=1e-9)
+        self.assertEqual(438758276, swing.seed)
+        self.assertEqual(False, swing.normalize_result)
 
         swing.set_item_col("item_1") \
             .set_user_col("user_1") \
             .set_k(20) \
-            .set_max_user_num_per_item(500)\
+            .set_max_user_num_per_item(500) \
             .set_min_user_behavior(20) \
             .set_max_user_behavior(50) \
             .set_alpha1(5) \
             .set_alpha2(1) \
-            .set_beta(0.35)
+            .set_beta(0.35) \
+            .set_seed(1) \
+            .set_normalize_result(True)
 
         self.assertEqual("item_1", swing.item_col)
         self.assertEqual("user_1", swing.user_col)
@@ -104,6 +114,9 @@ class SwingTest(PyFlinkMLTestCase):
         self.assertEqual(5, swing.alpha1)
         self.assertEqual(1, swing.alpha2)
         self.assertAlmostEqual(0.35, swing.beta, delta=1e-9)
+        self.assertEqual(1, swing.seed)
+        self.assertEqual(True, swing.normalize_result)
+
 
     def test_output_schema(self):
         swing = Swing() \
@@ -117,7 +130,7 @@ class SwingTest(PyFlinkMLTestCase):
             output.get_schema().get_field_names())
 
     def test_transform(self):
-        swing = Swing().set_min_user_behavior(1)
+        swing = Swing().set_min_user_behavior(2).setMaxUserBehavior(3)
         output = swing.transform(self.input_table)[0]
         self.verify_output_result(
             output,
@@ -125,8 +138,17 @@ class SwingTest(PyFlinkMLTestCase):
             output.get_schema().get_field_names(),
             self.expected_data)
 
+    def test_normalize(self):
+        swing = Swing().set_min_user_behavior(1).set_normalize_result(True)
+        output = swing.transform(self.input_table)[0]
+        self.verify_output_result(
+            output,
+            swing.get_item_col(),
+            output.get_schema().get_field_names(),
+            self.expected_normalized_data)
+
     def test_save_load_and_transform(self):
-        swing = Swing().set_min_user_behavior(1)
+        swing = Swing().set_min_user_behavior(2).setMaxUserBehavior(3)
         reloaded_swing = self.save_and_reload(swing)
         output = reloaded_swing.transform(self.input_table)[0]
         self.verify_output_result(
@@ -149,3 +171,12 @@ class SwingTest(PyFlinkMLTestCase):
             results.append([main_item, item_rank_score])
         results.sort(key=lambda x: x[0])
         self.assertEqual(expected_result, results)
+
+    def test_sampling_method(self):
+        swing1 = Swing().set_min_user_behavior(1).set_max_user_num_per_item(2).set_seed(3)
+        swing2 = Swing().set_min_user_behavior(1).set_max_user_num_per_item(2)
+        output1 = swing1.transform(self.input_table)[0]
+        output2 = swing2.transform(self.input_table)[0]
+        result1 = [result for result in self.t_env.to_data_stream(output1).execute_and_collect()]
+        result2 = [result for result in self.t_env.to_data_stream(output2).execute_and_collect()]
+        self.assertNotEqual(len(result1), len(result2))
