@@ -217,6 +217,7 @@ public class CacheDataCalcLocalHistsOperator
                         // When last tree is finished, initializes a new tree, and shuffle instance
                         // indices.
                         treeInitializer.init(
+                                getter.get(SharedStorageConstants.ALL_TREES).size(),
                                 d -> setter.set(SharedStorageConstants.SHUFFLED_INDICES, d));
                         LearningNode rootLearningNode = treeInitializer.getRootLearningNode();
                         indices = getter.get(SharedStorageConstants.SHUFFLED_INDICES);

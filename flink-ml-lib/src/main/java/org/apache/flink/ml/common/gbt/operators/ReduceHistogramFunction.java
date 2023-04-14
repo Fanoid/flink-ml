@@ -64,7 +64,7 @@ public class ReduceHistogramFunction
 
         BitSet accepted = pairAccepted.getOrDefault(pairId, new BitSet(numSubtasks));
         if (accepted.isEmpty()) {
-            LOG.info("Received histogram for new pair {}", pairId);
+            LOG.debug("Received histogram for new pair {}", pairId);
         }
         Preconditions.checkState(!accepted.get(sourceSubtaskId));
         accepted.set(sourceSubtaskId);
@@ -73,7 +73,7 @@ public class ReduceHistogramFunction
         pairHistogram.compute(pairId, (k, v) -> null == v ? histogram : v.accumulate(histogram));
         if (numSubtasks == accepted.cardinality()) {
             out.collect(Tuple2.of(pairId, pairHistogram.get(pairId)));
-            LOG.info("Output accumulated histogram for pair {}", pairId);
+            LOG.debug("Output accumulated histogram for pair {}", pairId);
             pairAccepted.remove(pairId);
             pairHistogram.remove(pairId);
         }

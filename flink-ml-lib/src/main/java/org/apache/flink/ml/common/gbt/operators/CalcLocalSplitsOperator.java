@@ -101,7 +101,7 @@ public class CalcLocalSplitsOperator extends AbstractStreamOperator<Tuple3<Integ
         Tuple2<Integer, Histogram> value = element.getValue();
         int pairId = value.f0;
         Histogram histogram = value.f1;
-        LOG.info("Received histogram for pairId: {}", pairId);
+        LOG.debug("Received histogram for pairId: {}", pairId);
         sharedStorageContext.invoke(
                 (getter, setter) -> {
                     List<LearningNode> layer = getter.get(SharedStorageConstants.LAYER);
@@ -124,7 +124,7 @@ public class CalcLocalSplitsOperator extends AbstractStreamOperator<Tuple3<Integ
                                     histogram);
                     output.collect(new StreamRecord<>(Tuple3.of(nodeId, pairId, bestSplit)));
                 });
-        LOG.info("Output split for pairId: {}", pairId);
+        LOG.debug("Output split for pairId: {}", pairId);
     }
 
     @Override

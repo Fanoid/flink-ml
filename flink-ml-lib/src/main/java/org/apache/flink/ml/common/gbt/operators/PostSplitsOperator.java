@@ -176,6 +176,7 @@ public class PostSplitsOperator extends AbstractStreamOperator<Integer>
                         setter.set(SharedStorageConstants.LEAVES, new ArrayList<>());
                         setter.set(SharedStorageConstants.SWAPPED_INDICES, new int[0]);
                         setter.set(SharedStorageConstants.ALL_TREES, allTrees);
+                        LOG.info("finalize {}-th tree", allTrees.size());
                     } else {
                         setter.set(SharedStorageConstants.SWAPPED_INDICES, indices);
                         setter.set(SharedStorageConstants.NEED_INIT_TREE, false);
@@ -209,7 +210,7 @@ public class PostSplitsOperator extends AbstractStreamOperator<Integer>
         Tuple2<Integer, Split> value = element.getValue();
         int nodeId = value.f0;
         Split split = value.f1;
-        LOG.info("Received split for node {}", nodeId);
+        LOG.debug("Received split for node {}", nodeId);
         nodeSplits[nodeId] = split;
     }
 

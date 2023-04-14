@@ -108,7 +108,7 @@ public class ReduceSplitsOperator extends AbstractStreamOperator<Tuple2<Integer,
         Split split = value.f2;
         BitSet featureMap = nodeFeatureMap.getOrDefault(nodeId, new BitSet());
         if (featureMap.isEmpty()) {
-            LOG.info("Received split for new node {}", nodeId);
+            LOG.debug("Received split for new node {}", nodeId);
         }
         sharedStorageContext.invoke(
                 (getter, setter) -> {
@@ -123,7 +123,7 @@ public class ReduceSplitsOperator extends AbstractStreamOperator<Tuple2<Integer,
         nodeBestSplit.compute(nodeId, (k, v) -> null == v ? split : v.accumulate(split));
         if (featureMap.cardinality() == nodeFeatureCounter.get(nodeId)) {
             output.collect(new StreamRecord<>(Tuple2.of(nodeId, nodeBestSplit.get(nodeId))));
-            LOG.info("Output accumulated split for node {}", nodeId);
+            LOG.debug("Output accumulated split for node {}", nodeId);
             nodeBestSplit.remove(nodeId);
             nodeFeatureMap.remove(nodeId);
             nodeFeatureCounter.remove(nodeId);

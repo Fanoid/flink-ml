@@ -121,7 +121,7 @@ class HistBuilder {
         builderImpl.init(isInputVector, featureMetas);
         builderImpl.calcHistsForPairs(subtaskId, out);
 
-        LOG.info("subtaskId: {}, {} end", this.subtaskId, HistBuilder.class.getSimpleName());
+        LOG.info("subtaskId: {}, {} end", subtaskId, HistBuilder.class.getSimpleName());
     }
 
     static class HistBuilderImpl {
@@ -322,7 +322,8 @@ class HistBuilder {
                     calcTotalHists(node, nodeHists, 0);
                 }
                 LOG.info(
-                        "node {}, {} #instances, {} #features, {} ms",
+                        "subtaskId: {}, node {}, {} #instances, {} #features, {} ms",
+                        subtaskId,
                         k,
                         node.slice.size(),
                         features.length,
@@ -344,8 +345,10 @@ class HistBuilder {
                 pairBaseId += features.length;
             }
 
-            long elapsed = System.currentTimeMillis() - start;
-            LOG.info("Elapsed time for calcNodeFeaturePairHists: {} ms", elapsed);
+            LOG.info(
+                    "subtaskId: {}, elapsed time for calculating histograms: {} ms",
+                    subtaskId,
+                    System.currentTimeMillis() - start);
         }
     }
 }
