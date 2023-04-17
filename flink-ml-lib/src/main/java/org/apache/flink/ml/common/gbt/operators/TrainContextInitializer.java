@@ -18,7 +18,6 @@
 
 package org.apache.flink.ml.common.gbt.operators;
 
-import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.ml.common.gbt.defs.BinnedInstance;
 import org.apache.flink.ml.common.gbt.defs.BoostingStrategy;
 import org.apache.flink.ml.common.gbt.defs.TaskType;
@@ -77,7 +76,6 @@ class TrainContextInitializer {
         trainContext.featureRandomizer = new Random(strategy.seed);
 
         trainContext.loss = getLoss();
-        trainContext.prior = calcPrior(trainContext.labelSumCount);
 
         // A special `feature` is appended with #bins = 1 to simplify codes.
         trainContext.numFeatureBins =
@@ -142,17 +140,6 @@ class TrainContextInitializer {
                 return LogLoss.INSTANCE;
             case SQUARED:
                 return SquaredErrorLoss.INSTANCE;
-            default:
-                throw new UnsupportedOperationException("Unsupported loss.");
-        }
-    }
-
-    private double calcPrior(Tuple2<Double, Long> labelStat) {
-        switch (strategy.lossType) {
-            case LOGISTIC:
-                return Math.log(labelStat.f0 / (labelStat.f1 - labelStat.f0));
-            case SQUARED:
-                return labelStat.f0 / labelStat.f1;
             default:
                 throw new UnsupportedOperationException("Unsupported loss.");
         }

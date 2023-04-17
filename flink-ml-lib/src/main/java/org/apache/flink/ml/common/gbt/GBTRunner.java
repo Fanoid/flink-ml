@@ -19,6 +19,7 @@
 package org.apache.flink.ml.common.gbt;
 
 import org.apache.flink.api.common.functions.AggregateFunction;
+import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.functions.RichMapFunction;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.typeinfo.Types;
@@ -50,6 +51,7 @@ import org.apache.flink.types.Row;
 import org.apache.flink.util.Preconditions;
 
 import org.apache.commons.lang3.ArrayUtils;
+import org.apache.commons.math3.analysis.function.Logit;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -89,19 +91,14 @@ public class GBTRunner {
 
     /** Trains a gradient boosting tree model with given data and parameters. */
     static DataStream<GBTModelData> train(Table dataTable, BoostingStrategy strategy) {
-        StreamTableEnvironment tEnv =
-                (StreamTableEnvironment) ((TableImpl) dataTable).getTableEnvironment();
         Tuple2<Table, DataStream<FeatureMeta>> preprocessResult =
                 strategy.isInputVector
                         ? Preprocess.preprocessVecCol(dataTable, strategy)
                         : Preprocess.preprocessCols(dataTable, strategy);
         dataTable = preprocessResult.f0;
         DataStream<FeatureMeta> featureMeta = preprocessResult.f1;
-
-        DataStream<Row> data = tEnv.toDataStream(dataTable);
-        DataStream<Tuple2<Double, Long>> labelSumCount =
-                DataStreamUtils.aggregate(data, new LabelSumCountFunction(strategy.labelCol));
-        return boost(dataTable, strategy, featureMeta, labelSumCount);
+        DataStream<Double> prior = calcPrior(dataTable, strategy);
+        return boost(dataTable, strategy, featureMeta, prior);
     }
 
     public static DataStream<Map<String, Double>> getFeatureImportance(
@@ -142,15 +139,15 @@ public class GBTRunner {
             Table dataTable,
             BoostingStrategy strategy,
             DataStream<FeatureMeta> featureMeta,
-            DataStream<Tuple2<Double, Long>> labelSumCount) {
+            DataStream<Double> prior) {
         StreamTableEnvironment tEnv =
                 (StreamTableEnvironment) ((TableImpl) dataTable).getTableEnvironment();
 
         final String featureMetaBcName = "featureMeta";
-        final String labelSumCountBcName = "labelSumCount";
+        final String priorBcName = "prior";
         Map<String, DataStream<?>> bcMap = new HashMap<>();
         bcMap.put(featureMetaBcName, featureMeta);
-        bcMap.put(labelSumCountBcName, labelSumCount);
+        bcMap.put(priorBcName, prior);
 
         DataStream<TrainContext> initTrainContext =
                 BroadcastUtils.withBroadcastStream(
@@ -162,7 +159,7 @@ public class GBTRunner {
                             DataStream<Integer> input = (DataStream<Integer>) (inputs.get(0));
                             return input.map(
                                     new InitTrainContextFunction(
-                                            featureMetaBcName, labelSumCountBcName, strategy));
+                                            featureMetaBcName, priorBcName, strategy));
                         });
 
         DataStream<Row> data = tEnv.toDataStream(dataTable);
@@ -216,6 +213,7 @@ public class GBTRunner {
         strategy.featureSubsetStrategy = estimator.getFeatureSubsetStrategy();
         strategy.regGamma = estimator.getRegGamma();
         strategy.regLambda = estimator.getRegLambda();
+        strategy.baseScore = estimator.getBaseScore();
 
         String lossTypeStr;
         if (estimator instanceof GBTClassifier) {
@@ -236,15 +234,39 @@ public class GBTRunner {
         return strategy;
     }
 
+    private static DataStream<Double> calcPrior(Table dataTable, BoostingStrategy strategy) {
+        StreamTableEnvironment tEnv =
+                (StreamTableEnvironment) ((TableImpl) dataTable).getTableEnvironment();
+        DataStream<Row> data = tEnv.toDataStream(dataTable);
+        if (null == strategy.baseScore) {
+            return DataStreamUtils.aggregate(data, new LabelSumCountFunction(strategy.labelCol))
+                    .map(new CalcPriorFunction(strategy.lossType));
+        } else {
+            double prior = baseScoreToPrior(strategy.baseScore, strategy.lossType);
+            return tEnv.toDataStream(tEnv.fromValues(prior), Double.class);
+        }
+    }
+
+    private static double baseScoreToPrior(double baseScore, LossType lossType) {
+        switch (lossType) {
+            case LOGISTIC:
+                return new Logit().value(baseScore);
+            case SQUARED:
+                return baseScore;
+            default:
+                throw new UnsupportedOperationException("Unsupported loss.");
+        }
+    }
+
     private static class InitTrainContextFunction extends RichMapFunction<Integer, TrainContext> {
         private final String featureMetaBcName;
-        private final String labelSumCountBcName;
+        private final String priorBcName;
         private final BoostingStrategy strategy;
 
         private InitTrainContextFunction(
-                String featureMetaBcName, String labelSumCountBcName, BoostingStrategy strategy) {
+                String featureMetaBcName, String priorBcName, BoostingStrategy strategy) {
             this.featureMetaBcName = featureMetaBcName;
-            this.labelSumCountBcName = labelSumCountBcName;
+            this.priorBcName = priorBcName;
             this.strategy = strategy;
         }
 
@@ -263,10 +285,8 @@ public class GBTRunner {
                                 d -> ArrayUtils.indexOf(strategy.featuresCols, d.name)));
             }
             trainContext.numFeatures = trainContext.featureMetas.length;
-            trainContext.labelSumCount =
-                    getRuntimeContext()
-                            .<Tuple2<Double, Long>>getBroadcastVariable(labelSumCountBcName)
-                            .get(0);
+            trainContext.prior =
+                    getRuntimeContext().<Double>getBroadcastVariable(priorBcName).get(0);
             return trainContext;
         }
     }
@@ -299,6 +319,26 @@ public class GBTRunner {
         @Override
         public Tuple2<Double, Long> merge(Tuple2<Double, Long> a, Tuple2<Double, Long> b) {
             return Tuple2.of(a.f0 + b.f0, a.f1 + b.f1);
+        }
+    }
+
+    private static class CalcPriorFunction implements MapFunction<Tuple2<Double, Long>, Double> {
+        private final LossType lossType;
+
+        public CalcPriorFunction(LossType lossType) {
+            this.lossType = lossType;
+        }
+
+        @Override
+        public Double map(Tuple2<Double, Long> value) {
+            switch (lossType) {
+                case LOGISTIC:
+                    return Math.log(value.f0 / (value.f1 - value.f0));
+                case SQUARED:
+                    return value.f0 / value.f1;
+                default:
+                    throw new UnsupportedOperationException("Unsupported loss.");
+            }
         }
     }
 }
