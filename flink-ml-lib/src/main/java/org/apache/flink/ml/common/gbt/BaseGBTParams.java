@@ -114,6 +114,16 @@ public interface BaseGBTParams<T>
                     .01,
                     ParamValidators.gtEq(0));
 
+    Param<Double> BASE_SCORE = new DoubleParam("baseScore", "Initial prediction score.", null);
+
+    default Double getBaseScore() {
+        return get(BASE_SCORE);
+    }
+
+    default T setBaseScore(Double value) {
+        return set(BASE_SCORE, value);
+    }
+
     default double getRegLambda() {
         return get(REG_LAMBDA);
     }

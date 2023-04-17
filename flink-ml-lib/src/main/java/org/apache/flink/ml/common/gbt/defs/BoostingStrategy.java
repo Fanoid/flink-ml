@@ -101,6 +101,12 @@ public class BoostingStrategy implements Serializable {
     /** The type of loss used in boosting. */
     public LossType lossType;
 
+    /**
+     * The initial prediction score. It is the probability of belonging to the positive label for
+     * classification tasks, and the prediction value for regression tasks.
+     */
+    public Double baseScore;
+
     // Derived parameters.
     /** Maximum number leaves. */
     public int maxNumLeaves;
