@@ -92,7 +92,9 @@ class Preprocess {
                     new StringIndexer()
                             .setInputCols(strategy.categoricalCols)
                             .setOutputCols(mappedCategoricalCols)
-                            .setHandleInvalid("keep");
+                            .setHandleInvalid("keep")
+                            .setMaxIndexNum(strategy.maxCategoriesNum)
+                            .setStringOrderType("frequencyDesc");
             StringIndexerModel stringIndexerModel = stringIndexer.fit(dataTable);
             dataTable = stringIndexerModel.transform(dataTable)[0];
 
