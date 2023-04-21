@@ -116,13 +116,12 @@ public interface BaseGBTParams<T>
 
     Param<Double> BASE_SCORE = new DoubleParam("baseScore", "Initial prediction score.", null);
 
-    default Double getBaseScore() {
-        return get(BASE_SCORE);
-    }
-
-    default T setBaseScore(Double value) {
-        return set(BASE_SCORE, value);
-    }
+    Param<Integer> MAX_CATEGORIES_NUM =
+            new IntParam(
+                    "maxCategoriesNum",
+                    "Maximum number of categories used in training for every categorical feature. If a feature has more categories than this limit, the categories with low frequencies are grouped as a single bin during training.",
+                    Integer.MAX_VALUE,
+                    ParamValidators.gtEq(2));
 
     default double getRegLambda() {
         return get(REG_LAMBDA);
@@ -226,5 +225,21 @@ public interface BaseGBTParams<T>
 
     default T setValidationTol(Double value) {
         return set(VALIDATION_TOL, value);
+    }
+
+    default Double getBaseScore() {
+        return get(BASE_SCORE);
+    }
+
+    default T setBaseScore(Double value) {
+        return set(BASE_SCORE, value);
+    }
+
+    default int getMaxCategoriesNum() {
+        return get(MAX_CATEGORIES_NUM);
+    }
+
+    default T setMaxCategoriesNum(Integer value) {
+        return set(MAX_CATEGORIES_NUM, value);
     }
 }

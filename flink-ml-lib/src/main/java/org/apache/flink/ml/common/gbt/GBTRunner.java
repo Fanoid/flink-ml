@@ -203,6 +203,7 @@ public class GBTRunner {
 
         strategy.maxDepth = estimator.getMaxDepth();
         strategy.maxBins = estimator.getMaxBins();
+        strategy.maxCategoriesNum = estimator.getMaxCategoriesNum();
         strategy.minInstancesPerNode = estimator.getMinInstancesPerNode();
         strategy.minWeightFractionPerNode = estimator.getMinWeightFractionPerNode();
         strategy.minInfoGain = estimator.getMinInfoGain();

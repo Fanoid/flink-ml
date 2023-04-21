@@ -57,6 +57,13 @@ public class BoostingStrategy implements Serializable {
     public int maxBins;
 
     /**
+     * Maximum number of categories used in training for every categorical feature. If a feature has
+     * more categories than this limit, the categories with low frequencies are grouped as a single
+     * bin during training.
+     */
+    public int maxCategoriesNum;
+
+    /**
      * Minimum number of instances each node must have. If a split causes the left or right child to
      * have fewer instances than minInstancesPerNode, the split is invalid.
      */
