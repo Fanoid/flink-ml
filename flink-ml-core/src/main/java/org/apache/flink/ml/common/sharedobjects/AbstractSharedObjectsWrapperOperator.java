@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-package org.apache.flink.ml.common.sharedstorage;
+package org.apache.flink.ml.common.sharedobjects;
 
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.core.memory.ManagedMemoryUseCase;
@@ -56,12 +56,12 @@ import org.slf4j.LoggerFactory;
 import java.util.Objects;
 import java.util.Optional;
 
-/** Base class for the shared storage wrapper operators. */
-abstract class AbstractSharedStorageWrapperOperator<T, S extends StreamOperator<T>>
+/** Base class for the shared objects wrapper operators. */
+abstract class AbstractSharedObjectsWrapperOperator<T, S extends StreamOperator<T>>
         implements StreamOperator<T>, IterationListener<T>, CheckpointedStreamOperator {
 
     private static final Logger LOG =
-            LoggerFactory.getLogger(AbstractSharedStorageWrapperOperator.class);
+            LoggerFactory.getLogger(AbstractSharedObjectsWrapperOperator.class);
 
     protected final StreamOperatorParameters<T> parameters;
 
@@ -74,15 +74,15 @@ abstract class AbstractSharedStorageWrapperOperator<T, S extends StreamOperator<
     protected final StreamOperatorFactory<T> operatorFactory;
     protected final OperatorMetricGroup metrics;
     protected final S wrappedOperator;
-    protected final SharedStorageContextImpl context;
+    protected final SharedObjectsContextImpl context;
     protected transient StreamOperatorStateHandler stateHandler;
     protected transient InternalTimeServiceManager<?> timeServiceManager;
 
     @SuppressWarnings({"unchecked", "rawtypes"})
-    AbstractSharedStorageWrapperOperator(
+    AbstractSharedObjectsWrapperOperator(
             StreamOperatorParameters<T> parameters,
             StreamOperatorFactory<T> operatorFactory,
-            SharedStorageContextImpl context) {
+            SharedObjectsContextImpl context) {
         this.parameters = Objects.requireNonNull(parameters);
         this.streamConfig = Objects.requireNonNull(parameters.getStreamConfig());
         this.containingTask = Objects.requireNonNull(parameters.getContainingTask());
@@ -100,11 +100,11 @@ abstract class AbstractSharedStorageWrapperOperator<T, S extends StreamOperator<
                                         parameters.getOperatorEventDispatcher())
                                 .f0;
         Preconditions.checkArgument(
-                wrappedOperator instanceof SharedStorageStreamOperator,
+                wrappedOperator instanceof SharedObjectsStreamOperator,
                 String.format(
                         "The wrapped operator is not an instance of %s.",
-                        SharedStorageStreamOperator.class.getSimpleName()));
-        ((SharedStorageStreamOperator) wrappedOperator).onSharedStorageContextSet(context);
+                        SharedObjectsStreamOperator.class.getSimpleName()));
+        ((SharedObjectsStreamOperator) wrappedOperator).onSharedObjectsContextSet(context);
     }
 
     private OperatorMetricGroup createOperatorMetricGroup(
