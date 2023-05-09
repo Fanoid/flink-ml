@@ -44,6 +44,7 @@ import org.apache.flink.ml.linalg.typeinfo.VectorTypeInfo;
 import org.apache.flink.ml.param.Param;
 import org.apache.flink.ml.regression.gbtregressor.GBTRegressor;
 import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.streaming.api.functions.sink.DiscardingSink;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 import org.apache.flink.table.api.internal.TableImpl;
@@ -168,12 +169,25 @@ public class GBTRunner {
         DataStream<Row> data = tEnv.toDataStream(dataTable);
         DataStreamList dataStreamList =
                 Iterations.iterateBoundedStreamsUntilTermination(
-                        DataStreamList.of(initTrainContext.broadcast()),
+                        DataStreamList.of(
+                                initTrainContext.broadcast(),
+                                // adds a dummy variable stream in order to match the feedback
+                                // stream
+                                initTrainContext.flatMap(
+                                        (v, out) -> {}, initTrainContext.getType())),
                         ReplayableDataStreamList.notReplay(data, featureMeta),
                         IterationConfig.newBuilder()
                                 .setOperatorLifeCycle(IterationConfig.OperatorLifeCycle.ALL_ROUND)
                                 .build(),
                         new BoostIterationBody(strategy));
+        DataStream<Row> evalResult = dataStreamList.get(1);
+        evalResult
+                .map(
+                        (value) -> {
+                            System.out.println("!!!!" + value);
+                            return value;
+                        })
+                .addSink(new DiscardingSink<>());
         return dataStreamList.get(0);
     }
 
