@@ -168,6 +168,7 @@ public class PostSplitsOperator extends AbstractSharedObjectsStreamOperator<Inte
                         setter.set(SharedObjectsConstants.NEED_INIT_TREE, false);
                     }
                 });
+        output.collect(new StreamRecord<>(0));
     }
 
     @Override

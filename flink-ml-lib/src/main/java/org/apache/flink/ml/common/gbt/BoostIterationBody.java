@@ -32,7 +32,9 @@ import org.apache.flink.ml.common.gbt.defs.Split;
 import org.apache.flink.ml.common.gbt.defs.TrainContext;
 import org.apache.flink.ml.common.gbt.operators.CacheDataCalcLocalHistsOperator;
 import org.apache.flink.ml.common.gbt.operators.CalcLocalSplitsOperator;
+import org.apache.flink.ml.common.gbt.operators.GetLabelPredOperator;
 import org.apache.flink.ml.common.gbt.operators.PostSplitsOperator;
+import org.apache.flink.ml.common.gbt.operators.PrintEvalResultsOperator;
 import org.apache.flink.ml.common.gbt.operators.ReduceHistogramFunction;
 import org.apache.flink.ml.common.gbt.operators.ReduceSplitsOperator;
 import org.apache.flink.ml.common.gbt.operators.SharedObjectsConstants;
@@ -41,6 +43,7 @@ import org.apache.flink.ml.common.sharedobjects.ItemDescriptor;
 import org.apache.flink.ml.common.sharedobjects.SharedObjectsBody;
 import org.apache.flink.ml.common.sharedobjects.SharedObjectsStreamOperator;
 import org.apache.flink.ml.common.sharedobjects.SharedObjectsUtils;
+import org.apache.flink.ml.evaluation.binaryclassification.EvalIterationUtils;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.types.Row;
@@ -115,6 +118,26 @@ class BoostIterationBody implements IterationBody {
             ownerMap.put(descriptor, postSplitsOp);
         }
 
+        // Evaluation with training data
+        final String labelCol = "label";
+        final String probCol = "prob";
+        GetLabelPredOperator getLabelPredOp = new GetLabelPredOperator(labelCol, probCol, 10);
+        DataStream<Row> trainLabelPred =
+                updatedModelData.transform(
+                        "GetTrainLabelPred",
+                        Types.ROW_NAMED(
+                                new String[] {labelCol, probCol}, Types.DOUBLE, Types.DOUBLE),
+                        getLabelPredOp);
+        DataStream<Row> trainEvalResults =
+                EvalIterationUtils.eval(trainLabelPred, labelCol, probCol, null);
+        trainEvalResults =
+                trainEvalResults
+                        .broadcast()
+                        .transform(
+                                "PrintTrainEvalResults",
+                                trainEvalResults.getType(),
+                                new PrintEvalResultsOperator());
+
         final OutputTag<GBTModelData> finalModelDataOutputTag =
                 new OutputTag<>("model_data", TypeInformation.of(GBTModelData.class));
         SingleOutputStreamOperator<Integer> termination =
@@ -126,20 +149,22 @@ class BoostIterationBody implements IterationBody {
                 termination.getSideOutput(finalModelDataOutputTag);
 
         return new SharedObjectsBody.SharedObjectsBodyResult(
-                Arrays.asList(updatedModelData, finalModelData, termination),
+                Arrays.asList(updatedModelData, finalModelData, termination, trainEvalResults),
                 Arrays.asList(
                         localHists.getTransformation(),
                         localSplits.getTransformation(),
                         globalSplits.getTransformation(),
                         updatedModelData.getTransformation(),
-                        termination.getTransformation()),
+                        termination.getTransformation(),
+                        trainEvalResults.getTransformation()),
                 ownerMap);
     }
 
     @Override
     public IterationBodyResult process(DataStreamList variableStreams, DataStreamList dataStreams) {
         DataStream<Row> data = dataStreams.get(0);
-        DataStream<TrainContext> trainContext = variableStreams.get(0);
+        DataStream<TrainContext> trainContext =
+                variableStreams.<TrainContext>get(0).union(variableStreams.get(1));
 
         List<DataStream<?>> outputs =
                 SharedObjectsUtils.withSharedObjects(
@@ -148,11 +173,16 @@ class BoostIterationBody implements IterationBody {
         DataStream<?> updatedModelData = outputs.get(0);
         DataStream<?> finalModelData = outputs.get(1);
         DataStream<?> termination = outputs.get(2);
+        DataStream<?> trainEvalResults = outputs.get(3);
+
         return new IterationBodyResult(
                 DataStreamList.of(
                         updatedModelData.flatMap(
+                                (d, out) -> {}, TypeInformation.of(TrainContext.class)),
+                        // add a feedback stream so that the epoch watermark is synchronized.
+                        trainEvalResults.flatMap(
                                 (d, out) -> {}, TypeInformation.of(TrainContext.class))),
-                DataStreamList.of(finalModelData),
+                DataStreamList.of(finalModelData, trainEvalResults),
                 termination);
     }
 }
