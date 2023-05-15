@@ -22,6 +22,7 @@ import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.tuple.Tuple3;
+import org.apache.flink.api.java.tuple.Tuple5;
 import org.apache.flink.iteration.DataStreamList;
 import org.apache.flink.iteration.IterationBody;
 import org.apache.flink.iteration.IterationBodyResult;
@@ -72,13 +73,18 @@ class BoostIterationBody implements IterationBody {
 
         CacheDataCalcLocalHistsOperator cacheDataCalcLocalHistsOp =
                 new CacheDataCalcLocalHistsOperator(strategy);
-        SingleOutputStreamOperator<Tuple3<Integer, Integer, Histogram>> localHists =
-                data.connect(trainContext)
-                        .transform(
-                                "CacheDataCalcLocalHists",
-                                Types.TUPLE(
-                                        Types.INT, Types.INT, TypeInformation.of(Histogram.class)),
-                                cacheDataCalcLocalHistsOp);
+        SingleOutputStreamOperator<Tuple5<Integer, Integer, Integer, Integer, Histogram>>
+                localHists =
+                        data.connect(trainContext)
+                                .transform(
+                                        "CacheDataCalcLocalHists",
+                                        Types.TUPLE(
+                                                Types.INT,
+                                                Types.INT,
+                                                Types.INT,
+                                                Types.INT,
+                                                TypeInformation.of(Histogram.class)),
+                                        cacheDataCalcLocalHistsOp);
         for (ItemDescriptor<?> s : SharedObjectsConstants.OWNED_BY_CACHE_DATA_CALC_LOCAL_HISTS_OP) {
             ownerMap.put(s, cacheDataCalcLocalHistsOp);
         }
