@@ -18,22 +18,29 @@
 
 package org.apache.flink.ml.common.gbt;
 
+import org.apache.flink.api.common.functions.MapPartitionFunction;
+import org.apache.flink.api.common.functions.RichMapFunction;
+import org.apache.flink.api.common.typeinfo.PrimitiveArrayTypeInfo;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.api.java.typeutils.RowTypeInfo;
+import org.apache.flink.ml.common.broadcast.BroadcastUtils;
+import org.apache.flink.ml.common.datastream.DataStreamUtils;
 import org.apache.flink.ml.common.datastream.TableUtils;
 import org.apache.flink.ml.common.gbt.defs.BoostingStrategy;
 import org.apache.flink.ml.common.gbt.defs.FeatureMeta;
 import org.apache.flink.ml.feature.kbinsdiscretizer.KBinsDiscretizer;
-import org.apache.flink.ml.feature.kbinsdiscretizer.KBinsDiscretizerModel;
-import org.apache.flink.ml.feature.kbinsdiscretizer.KBinsDiscretizerModelData;
 import org.apache.flink.ml.feature.stringindexer.StringIndexer;
 import org.apache.flink.ml.feature.stringindexer.StringIndexerModel;
 import org.apache.flink.ml.feature.stringindexer.StringIndexerModelData;
 import org.apache.flink.ml.linalg.DenseVector;
+import org.apache.flink.ml.linalg.SparseVector;
+import org.apache.flink.ml.linalg.Vector;
 import org.apache.flink.ml.linalg.Vectors;
 import org.apache.flink.ml.linalg.typeinfo.DenseVectorTypeInfo;
+import org.apache.flink.ml.linalg.typeinfo.VectorTypeInfo;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.table.api.ApiExpression;
 import org.apache.flink.table.api.Expressions;
@@ -41,11 +48,18 @@ import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 import org.apache.flink.table.api.internal.TableImpl;
 import org.apache.flink.types.Row;
+import org.apache.flink.util.Collector;
 import org.apache.flink.util.Preconditions;
 
 import org.apache.commons.lang3.ArrayUtils;
+import org.eclipse.collections.impl.list.mutable.primitive.DoubleArrayList;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 
 import static org.apache.flink.table.api.Expressions.$;
 
@@ -57,6 +71,7 @@ import static org.apache.flink.table.api.Expressions.$;
  * and the meta information of column(s) are obtained.
  */
 class Preprocess {
+    private static final Logger LOG = LoggerFactory.getLogger(Preprocess.class);
 
     /**
      * Maps continuous and categorical columns to integers inplace using quantile discretizer and
@@ -75,8 +90,9 @@ class Preprocess {
         // Maps continuous columns to integers, and obtain corresponding discretizer model.
         String[] continuousCols =
                 ArrayUtils.removeElements(strategy.featuresCols, strategy.categoricalCols);
-        Tuple2<Table, DataStream<KBinsDiscretizerModelData>> continuousMappedDataAndModelData =
-                discretizeContinuousCols(dataTable, continuousCols, strategy.maxBins);
+        Tuple2<Table, DataStream<double[][]>> continuousMappedDataAndModelData =
+                discretizeContinuousCols(
+                        dataTable, continuousCols, strategy.maxBins, strategy.seed);
         dataTable = continuousMappedDataAndModelData.f0;
         DataStream<FeatureMeta> continuousFeatureMeta =
                 buildContinuousFeatureMeta(continuousMappedDataAndModelData.f1, continuousCols);
@@ -125,18 +141,18 @@ class Preprocess {
     }
 
     /**
-     * Maps features values in vectors to integers using quantile discretizer, and obtains meta
+     * Maps features values in vectors to indices using quantile discretizer, and obtains meta
      * information for all features.
      */
     static Tuple2<Table, DataStream<FeatureMeta>> preprocessVecCol(
             Table dataTable, BoostingStrategy strategy) {
         dataTable = dataTable.select($(strategy.featuresCols[0]), $(strategy.labelCol));
-        Tuple2<Table, DataStream<KBinsDiscretizerModelData>> mappedDataAndModelData =
-                discretizeVectorCol(dataTable, strategy.featuresCols[0], strategy.maxBins);
-        dataTable = mappedDataAndModelData.f0;
-        DataStream<FeatureMeta> featureMeta =
-                buildContinuousFeatureMeta(mappedDataAndModelData.f1, null);
-        return Tuple2.of(dataTable, featureMeta);
+        Tuple2<Table, DataStream<double[][]>> mappedDataAndBinEdges =
+                discretizeVectorCol(
+                        dataTable, strategy.featuresCols[0], strategy.maxBins, strategy.seed);
+        return Tuple2.of(
+                mappedDataAndBinEdges.f0,
+                buildContinuousFeatureMeta(mappedDataAndBinEdges.f1, null));
     }
 
     /** Builds {@link FeatureMeta} from {@link StringIndexerModelData}. */
@@ -157,27 +173,23 @@ class Preprocess {
                 .returns(TypeInformation.of(FeatureMeta.class));
     }
 
-    /** Builds {@link FeatureMeta} from {@link KBinsDiscretizerModelData}. */
+    /** Builds {@link FeatureMeta} from bin edges. */
     private static DataStream<FeatureMeta> buildContinuousFeatureMeta(
-            DataStream<KBinsDiscretizerModelData> discretizerModelData, String[] cols) {
+            DataStream<double[][]> discretizerModelData, String[] cols) {
         return discretizerModelData
                 .<FeatureMeta>flatMap(
                         (d, out) -> {
-                            double[][] binEdges = d.binEdges;
-                            for (int i = 0; i < binEdges.length; i += 1) {
+                            for (int i = 0; i < d.length; i += 1) {
                                 String name = (null != cols) ? cols[i] : "_vec_f" + i;
-                                out.collect(
-                                        FeatureMeta.continuous(
-                                                name, binEdges[i].length - 1, binEdges[i]));
+                                out.collect(FeatureMeta.continuous(name, d[i].length - 1, d[i]));
                             }
                         })
                 .returns(TypeInformation.of(FeatureMeta.class));
     }
 
     /** Discretizes continuous columns inplace, and obtains quantile discretizer model data. */
-    @SuppressWarnings("checkstyle:RegexpSingleline")
-    private static Tuple2<Table, DataStream<KBinsDiscretizerModelData>> discretizeContinuousCols(
-            Table dataTable, String[] continuousCols, int numBins) {
+    private static Tuple2<Table, DataStream<double[][]>> discretizeContinuousCols(
+            Table dataTable, String[] continuousCols, int numBins, long seed) {
         final StreamTableEnvironment tEnv =
                 (StreamTableEnvironment) ((TableImpl) dataTable).getTableEnvironment();
         final int nCols = continuousCols.length;
@@ -203,9 +215,9 @@ class Preprocess {
                                         DenseVectorTypeInfo.INSTANCE),
                                 ArrayUtils.add(inputTypeInfo.getFieldNames(), vectorCol)));
 
-        Tuple2<Table, DataStream<KBinsDiscretizerModelData>> mappedDataAndModelData =
-                discretizeVectorCol(tEnv.fromDataStream(dataWithVectors), vectorCol, numBins);
-        DataStream<Row> discretized = tEnv.toDataStream(mappedDataAndModelData.f0);
+        Tuple2<Table, DataStream<double[][]>> mappedDataAndModelData =
+                discretizeVectorCol(tEnv.fromDataStream(dataWithVectors), vectorCol, numBins, seed);
+        DataStream<Row> discretized = tEnv.toDataStream(mappedDataAndModelData.f0, Row.class);
 
         // Maps the result vector back to multiple continuous columns.
         final String[] otherCols =
@@ -240,25 +252,178 @@ class Preprocess {
 
     /**
      * Discretize the vector column inplace using quantile discretizer, and obtains quantile
-     * discretizer model data.
+     * discretizer model data. The computation is similar to {@link KBinsDiscretizer} with
+     * `QUANTILE` strategy, except that unseen entries in sparse vectors are kept unchanged.
      */
-    private static Tuple2<Table, DataStream<KBinsDiscretizerModelData>> discretizeVectorCol(
-            Table dataTable, String vectorCol, int numBins) {
-        final String outputCol = "_output_col";
-        // TODO: currently we set `subSamples` to 50000 to reduce memory usage.
-        KBinsDiscretizer kBinsDiscretizer =
-                new KBinsDiscretizer()
-                        .setInputCol(vectorCol)
-                        .setOutputCol(outputCol)
-                        .setStrategy("quantile")
-                        .setNumBins(numBins)
-                        .setSubSamples(50000);
-        KBinsDiscretizerModel model = kBinsDiscretizer.fit(dataTable);
-        Table discretizedDataTable = model.transform(dataTable)[0];
-        return Tuple2.of(
-                discretizedDataTable
-                        .dropColumns($(vectorCol))
-                        .renameColumns($(outputCol).as(vectorCol)),
-                KBinsDiscretizerModelData.getModelDataStream(model.getModelData()[0]));
+    private static Tuple2<Table, DataStream<double[][]>> discretizeVectorCol(
+            Table dataTable, String vectorCol, int numBins, long seed) {
+        final StreamTableEnvironment tEnv =
+                (StreamTableEnvironment) ((TableImpl) dataTable).getTableEnvironment();
+        DataStream<Row> data = tEnv.toDataStream(dataTable, Row.class);
+
+        final int numSamples = 50000;
+        DataStream<Tuple3<Integer, Double, Integer>> entries =
+                DataStreamUtils.sample(
+                                data.map(d -> d.getFieldAs(vectorCol), VectorTypeInfo.INSTANCE),
+                                numSamples,
+                                seed)
+                        .flatMap(
+                                (d, out) -> {
+                                    if (d instanceof DenseVector) {
+                                        DenseVector dv = (DenseVector) d;
+                                        for (int i = 0; i < dv.size(); i += 1) {
+                                            out.collect(Tuple3.of(i, dv.get(i), d.size()));
+                                        }
+                                    } else {
+                                        SparseVector sv = (SparseVector) d;
+                                        for (int i = 0; i < sv.indices.length; i += 1) {
+                                            out.collect(
+                                                    Tuple3.of(
+                                                            sv.indices[i], sv.values[i], d.size()));
+                                        }
+                                    }
+                                },
+                                Types.TUPLE(Types.INT, Types.DOUBLE, Types.INT));
+
+        DataStream<Tuple3<Integer, double[], Integer>> columnBinEdges =
+                DataStreamUtils.mapPartition(
+                        entries.keyBy(value -> value.f0), new CalcBinEdgesFunction(numBins));
+        DataStream<double[][]> binEdges =
+                DataStreamUtils.mapPartition(
+                        columnBinEdges,
+                        (values, out) -> {
+                            double[][] binEdgesArr = null;
+                            for (Tuple3<Integer, double[], Integer> value : values) {
+                                if (null == binEdgesArr) {
+                                    binEdgesArr = new double[value.f2][];
+                                }
+                                binEdgesArr[value.f0] = value.f1;
+                            }
+                            if (null == binEdgesArr) {
+                                binEdgesArr = new double[0][];
+                            }
+                            for (int i = 0; i < binEdgesArr.length; i += 1) {
+                                if (null == binEdgesArr[i]) {
+                                    binEdgesArr[i] =
+                                            new double[] {
+                                                Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY
+                                            };
+                                }
+                            }
+                            out.collect(binEdgesArr);
+                        },
+                        Types.OBJECT_ARRAY(
+                                PrimitiveArrayTypeInfo.DOUBLE_PRIMITIVE_ARRAY_TYPE_INFO));
+        binEdges.getTransformation().setParallelism(1);
+
+        final String broadcastModelKey = "broadcastModelKey";
+        DataStream<Row> output =
+                BroadcastUtils.withBroadcastStream(
+                        Collections.singletonList(data),
+                        Collections.singletonMap(broadcastModelKey, binEdges),
+                        inputList -> {
+                            //noinspection unchecked
+                            DataStream<Row> input = (DataStream<Row>) inputList.get(0);
+                            return input.map(
+                                    new FindBinFunction(vectorCol, broadcastModelKey),
+                                    TableUtils.getRowTypeInfo(dataTable.getResolvedSchema()));
+                        });
+        return Tuple2.of(tEnv.fromDataStream(output), binEdges);
+    }
+
+    /**
+     * Calculate bin edges from entries. The input elements are (column index, column value), and
+     * the output elements are (column index, bin edges).
+     */
+    private static class CalcBinEdgesFunction
+            implements MapPartitionFunction<
+                    Tuple3<Integer, Double, Integer>, Tuple3<Integer, double[], Integer>> {
+        private final int numBins;
+
+        public CalcBinEdgesFunction(int numBins) {
+            this.numBins = numBins;
+        }
+
+        @Override
+        public void mapPartition(
+                Iterable<Tuple3<Integer, Double, Integer>> values,
+                Collector<Tuple3<Integer, double[], Integer>> out) {
+            Map<Integer, DoubleArrayList> columnElementsMap = new HashMap<>();
+            int vectorSize = 0;
+            for (Tuple3<Integer, Double, Integer> value : values) {
+                if (vectorSize <= 0) {
+                    vectorSize = value.f2;
+                }
+                DoubleArrayList elements =
+                        columnElementsMap.compute(
+                                value.f0, (k, v) -> null == v ? new DoubleArrayList() : v);
+                if (!Double.isNaN(value.f1)) {
+                    elements.add(value.f1);
+                }
+            }
+            for (int columnId : columnElementsMap.keySet()) {
+                double[] elements = columnElementsMap.get(columnId).toArray();
+                Arrays.sort(elements);
+                if (elements[0] == elements[elements.length - 1]) {
+                    LOG.warn("Feature {} is constant and the output will all be zero.", columnId);
+                    out.collect(
+                            Tuple3.of(
+                                    columnId,
+                                    new double[] {
+                                        Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY
+                                    },
+                                    vectorSize));
+                } else {
+                    out.collect(
+                            Tuple3.of(
+                                    columnId,
+                                    KBinsDiscretizer.removeDuplicatedBinEdges(elements, numBins),
+                                    vectorSize));
+                }
+            }
+        }
+    }
+
+    private static class FindBinFunction extends RichMapFunction<Row, Row> {
+        private final String vectorCol;
+        private final String broadcastKey;
+        /** Model data used to find bins for each feature. */
+        private double[][] binEdges;
+
+        private FindBinFunction(String vectorCol, String broadcastKey) {
+            this.vectorCol = vectorCol;
+            this.broadcastKey = broadcastKey;
+        }
+
+        @Override
+        public Row map(Row value) {
+            if (null == binEdges) {
+                binEdges =
+                        getRuntimeContext().<double[][]>getBroadcastVariable(broadcastKey).get(0);
+            }
+            Vector vec = value.getFieldAs(vectorCol);
+            if (vec instanceof DenseVector) {
+                DenseVector dv = (DenseVector) vec;
+                for (int i = 0; i < dv.size(); i += 1) {
+                    double v = dv.get(i);
+                    if (Double.isNaN(v)) {
+                        dv.set(i, binEdges[i].length - 1);
+                    } else {
+                        dv.set(i, DataUtils.findBin(binEdges[i], v));
+                    }
+                }
+            } else {
+                SparseVector sv = (SparseVector) vec;
+                for (int i = 0; i < sv.indices.length; i += 1) {
+                    double v = sv.values[i];
+                    if (Double.isNaN(v)) {
+                        sv.set(i, binEdges[i].length - 1);
+                    } else {
+                        sv.values[i] = DataUtils.findBin(binEdges[sv.indices[i]], v);
+                    }
+                }
+            }
+            return value;
+        }
     }
 }

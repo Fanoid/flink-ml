@@ -66,4 +66,7 @@ public class TrainContext implements Serializable {
 
     /** The loss function. */
     public LossFunc loss;
+
+    /** Whether to treat unseens values as missing values or 0s. */
+    public boolean isUnseenMissing;
 }
