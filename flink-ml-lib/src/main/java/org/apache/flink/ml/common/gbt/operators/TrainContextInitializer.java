@@ -76,6 +76,7 @@ class TrainContextInitializer {
         trainContext.featureRandomizer = new Random(strategy.seed);
 
         trainContext.loss = getLoss();
+        trainContext.isUnseenMissing = true;
 
         // A special `feature` is appended with #bins = 1 to simplify codes.
         trainContext.numFeatureBins =

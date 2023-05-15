@@ -55,7 +55,7 @@ class HistBuilder {
     private final Random featureRandomizer;
     private final int[] featureIndicesPool;
 
-    private final boolean isInputVector;
+    private final boolean isUnseenMissing;
     private final int maxDepth;
 
     public HistBuilder(TrainContext trainContext) {
@@ -69,7 +69,7 @@ class HistBuilder {
         featureRandomizer = trainContext.featureRandomizer;
         featureIndicesPool = IntStream.range(0, trainContext.numFeatures).toArray();
 
-        isInputVector = trainContext.strategy.isInputVector;
+        isUnseenMissing = trainContext.isUnseenMissing;
         maxDepth = trainContext.strategy.maxDepth;
     }
 
@@ -118,7 +118,7 @@ class HistBuilder {
                         indices,
                         instances,
                         pgh);
-        builderImpl.init(isInputVector, featureMetas);
+        builderImpl.init(isUnseenMissing, featureMetas);
         builderImpl.calcHistsForPairs(subtaskId, out);
 
         LOG.info("subtaskId: {}, {} end", subtaskId, HistBuilder.class.getSimpleName());
@@ -192,12 +192,12 @@ class HistBuilder {
             hists[index + 3] += d3;
         }
 
-        private void init(boolean isInputVector, FeatureMeta[] featureMetas) {
+        private void init(boolean isUnseenMissing, FeatureMeta[] featureMetas) {
             featureDefaultVal = new int[numFeatures];
             for (int i = 0; i < numFeatures; i += 1) {
                 FeatureMeta d = featureMetas[i];
                 featureDefaultVal[i] =
-                        isInputVector && d instanceof FeatureMeta.ContinuousFeatureMeta
+                        !isUnseenMissing && d instanceof FeatureMeta.ContinuousFeatureMeta
                                 ? ((FeatureMeta.ContinuousFeatureMeta) d).zeroBin
                                 : d.missingBin;
             }

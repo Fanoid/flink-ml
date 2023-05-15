@@ -32,6 +32,7 @@ import org.apache.flink.ml.common.gbt.typeinfo.BinnedInstanceSerializer;
 import org.apache.flink.ml.common.lossfunc.LossFunc;
 import org.apache.flink.ml.common.sharedstorage.SharedStorageContext;
 import org.apache.flink.ml.common.sharedstorage.SharedStorageStreamOperator;
+import org.apache.flink.ml.linalg.DenseVector;
 import org.apache.flink.ml.linalg.SparseVector;
 import org.apache.flink.ml.linalg.Vector;
 import org.apache.flink.runtime.state.StateInitializationContext;
@@ -137,9 +138,14 @@ public class CacheDataCalcLocalHistsOperator
 
         if (strategy.isInputVector) {
             Vector vec = row.getFieldAs(strategy.featuresCols[0]);
-            SparseVector sv = vec.toSparse();
-            instance.featureIds = sv.indices.length == sv.size() ? null : sv.indices;
-            instance.featureValues = Arrays.stream(sv.values).mapToInt(d -> (int) d).toArray();
+            if (vec instanceof DenseVector) {
+                DenseVector dv = (DenseVector) vec;
+                instance.featureValues = Arrays.stream(dv.values).mapToInt(d -> (int) d).toArray();
+            } else {
+                SparseVector sv = (SparseVector) vec;
+                instance.featureIds = sv.indices.length == sv.size() ? null : sv.indices;
+                instance.featureValues = Arrays.stream(sv.values).mapToInt(d -> (int) d).toArray();
+            }
         } else {
             instance.featureValues =
                     Arrays.stream(strategy.featuresCols)
