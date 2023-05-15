@@ -41,6 +41,26 @@ class SharedStorage {
     private static final Map<Tuple3<StorageID, Integer, String>, String> owners =
             new ConcurrentHashMap<>();
 
+    private static final ConcurrentHashMap<Tuple3<StorageID, Integer, String>, Integer>
+            refCounters = new ConcurrentHashMap<>();
+
+    @SuppressWarnings("UnusedReturnValue")
+    static int incRef(Tuple3<StorageID, Integer, String> t) {
+        return refCounters.compute(t, (k, oldV) -> null == oldV ? 1 : oldV + 1);
+    }
+
+    @SuppressWarnings("UnusedReturnValue")
+    static int decRef(Tuple3<StorageID, Integer, String> t) {
+        //noinspection DataFlowIssue
+        int numRefs = refCounters.compute(t, (k, oldV) -> oldV - 1);
+        if (numRefs == 0) {
+            m.remove(t);
+            owners.remove(t);
+            refCounters.remove(t);
+        }
+        return numRefs;
+    }
+
     /** Gets a {@link Reader} of shared item identified by (storageID, subtaskId, descriptor). */
     static <T> Reader<T> getReader(
             StorageID storageID, int subtaskId, ItemDescriptor<T> descriptor) {
@@ -83,6 +103,7 @@ class SharedStorage {
 
         Reader(Tuple3<StorageID, Integer, String> t) {
             this.t = t;
+            incRef(t);
         }
 
         T get() {
@@ -104,6 +125,10 @@ class SharedStorage {
             } while (waitTime < 10 * 1000);
             throw new IllegalStateException(
                     String.format("Failed to get value of %s after waiting %d ms.", t, waitTime));
+        }
+
+        void remove() {
+            decRef(t);
         }
     }
 
@@ -154,10 +179,10 @@ class SharedStorage {
             isDirty = true;
         }
 
+        @Override
         void remove() {
             ensureOwner();
-            m.remove(t);
-            owners.remove(t);
+            super.remove();
             cache.clear();
         }
 

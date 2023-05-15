@@ -22,7 +22,6 @@ import org.apache.flink.iteration.IterationListener;
 import org.apache.flink.ml.common.gbt.GBTModelData;
 import org.apache.flink.ml.common.sharedstorage.SharedStorageContext;
 import org.apache.flink.ml.common.sharedstorage.SharedStorageStreamOperator;
-import org.apache.flink.runtime.state.StateInitializationContext;
 import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
@@ -44,12 +43,6 @@ public class TerminationOperator extends AbstractStreamOperator<Integer>
     public TerminationOperator(OutputTag<GBTModelData> modelDataOutputTag) {
         this.modelDataOutputTag = modelDataOutputTag;
         sharedStorageAccessorID = getClass().getSimpleName() + "-" + UUID.randomUUID();
-    }
-
-    @Override
-    public void initializeState(StateInitializationContext context) throws Exception {
-        super.initializeState(context);
-        sharedStorageContext.initializeState(this, getRuntimeContext(), context);
     }
 
     @Override
