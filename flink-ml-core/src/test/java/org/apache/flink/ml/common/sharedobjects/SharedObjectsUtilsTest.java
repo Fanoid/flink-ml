@@ -26,7 +26,6 @@ import org.apache.flink.ml.util.TestUtils;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
 import org.apache.flink.streaming.api.operators.BoundedOneInput;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
@@ -42,7 +41,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 /** Tests the {@link SharedObjectsUtils}. */
 public class SharedObjectsUtilsTest {
@@ -90,31 +88,12 @@ public class SharedObjectsUtilsTest {
     }
 
     /** Operator A: add input elements to the shared {@link #SUM}. */
-    static class AOperator extends AbstractStreamOperator<Long>
-            implements OneInputStreamOperator<Long, Long>,
-                    SharedObjectsStreamOperator,
-                    BoundedOneInput {
-
-        private final String sharedObjectsAccessorID;
-        private SharedObjectsContext sharedObjectsContext;
-
-        public AOperator() {
-            sharedObjectsAccessorID = getClass().getSimpleName() + "-" + UUID.randomUUID();
-        }
-
-        @Override
-        public void onSharedObjectsContextSet(SharedObjectsContext context) {
-            this.sharedObjectsContext = context;
-        }
-
-        @Override
-        public String getSharedObjectsAccessorID() {
-            return sharedObjectsAccessorID;
-        }
+    static class AOperator extends AbstractSharedObjectsStreamOperator<Long>
+            implements OneInputStreamOperator<Long, Long>, BoundedOneInput {
 
         @Override
         public void processElement(StreamRecord<Long> element) throws Exception {
-            sharedObjectsContext.invoke(
+            invoke(
                     (getter, setter) -> {
                         Long currentSum = getter.get(SUM);
                         setter.set(SUM, currentSum + element.getValue());
@@ -129,29 +108,12 @@ public class SharedObjectsUtilsTest {
     }
 
     /** Operator B: when input ends, get the value from shared {@link #SUM}. */
-    static class BOperator extends AbstractStreamOperator<Long>
-            implements OneInputStreamOperator<Long, Long>, SharedObjectsStreamOperator {
-
-        private final String sharedObjectsAccessorID;
-        private SharedObjectsContext sharedObjectsContext;
-
-        public BOperator() {
-            sharedObjectsAccessorID = getClass().getSimpleName() + "-" + UUID.randomUUID();
-        }
-
-        @Override
-        public void onSharedObjectsContextSet(SharedObjectsContext context) {
-            this.sharedObjectsContext = context;
-        }
-
-        @Override
-        public String getSharedObjectsAccessorID() {
-            return sharedObjectsAccessorID;
-        }
+    static class BOperator extends AbstractSharedObjectsStreamOperator<Long>
+            implements OneInputStreamOperator<Long, Long> {
 
         @Override
         public void processElement(StreamRecord<Long> element) throws Exception {
-            sharedObjectsContext.invoke(
+            invoke(
                     (getter, setter) -> {
                         output.collect(new StreamRecord<>(getter.get(SUM)));
                     });
