@@ -28,11 +28,9 @@ import org.apache.flink.ml.common.gbt.defs.LearningNode;
 import org.apache.flink.ml.common.gbt.defs.Node;
 import org.apache.flink.ml.common.gbt.defs.Split;
 import org.apache.flink.ml.common.gbt.defs.TrainContext;
-import org.apache.flink.ml.common.sharedobjects.SharedObjectsContext;
-import org.apache.flink.ml.common.sharedobjects.SharedObjectsStreamOperator;
+import org.apache.flink.ml.common.sharedobjects.AbstractSharedObjectsStreamOperator;
 import org.apache.flink.runtime.state.StateInitializationContext;
 import org.apache.flink.runtime.state.StateSnapshotContext;
-import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.util.Collector;
@@ -43,23 +41,19 @@ import org.slf4j.LoggerFactory;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.UUID;
 
 /**
  * Post-process after global splits obtained, including split instances to left or child nodes, and
  * update instances scores after a tree is complete.
  */
-public class PostSplitsOperator extends AbstractStreamOperator<Integer>
+public class PostSplitsOperator extends AbstractSharedObjectsStreamOperator<Integer>
         implements OneInputStreamOperator<Tuple2<Integer, Split>, Integer>,
-                IterationListener<Integer>,
-                SharedObjectsStreamOperator {
+                IterationListener<Integer> {
 
     private static final String NODE_SPLITTER_STATE_NAME = "node_splitter";
     private static final String INSTANCE_UPDATER_STATE_NAME = "instance_updater";
 
     private static final Logger LOG = LoggerFactory.getLogger(PostSplitsOperator.class);
-
-    private final String sharedObjectsAccessorID;
 
     // States of local data.
     private transient Split[] nodeSplits;
@@ -67,11 +61,6 @@ public class PostSplitsOperator extends AbstractStreamOperator<Integer>
     private transient NodeSplitter nodeSplitter;
     private transient ListStateWithCache<InstanceUpdater> instanceUpdaterState;
     private transient InstanceUpdater instanceUpdater;
-    private transient SharedObjectsContext sharedObjectsContext;
-
-    public PostSplitsOperator() {
-        sharedObjectsAccessorID = getClass().getSimpleName() + "-" + UUID.randomUUID();
-    }
 
     @Override
     public void initializeState(StateInitializationContext context) throws Exception {
@@ -111,7 +100,7 @@ public class PostSplitsOperator extends AbstractStreamOperator<Integer>
     public void onEpochWatermarkIncremented(
             int epochWatermark, Context context, Collector<Integer> collector) throws Exception {
         if (0 == epochWatermark) {
-            sharedObjectsContext.invoke(
+            invoke(
                     (getter, setter) -> {
                         TrainContext trainContext =
                                 getter.get(SharedObjectsConstants.TRAIN_CONTEXT);
@@ -122,7 +111,7 @@ public class PostSplitsOperator extends AbstractStreamOperator<Integer>
                     });
         }
 
-        sharedObjectsContext.invoke(
+        invoke(
                 (getter, setter) -> {
                     int[] indices = getter.get(SharedObjectsConstants.SWAPPED_INDICES);
                     if (0 == indices.length) {
@@ -184,7 +173,7 @@ public class PostSplitsOperator extends AbstractStreamOperator<Integer>
     @Override
     public void onIterationTerminated(Context context, Collector<Integer> collector)
             throws Exception {
-        sharedObjectsContext.invoke(
+        invoke(
                 (getter, setter) -> {
                     setter.set(SharedObjectsConstants.PREDS_GRADS_HESSIANS, new double[0]);
                     setter.set(SharedObjectsConstants.SWAPPED_INDICES, new int[0]);
@@ -197,7 +186,7 @@ public class PostSplitsOperator extends AbstractStreamOperator<Integer>
     @Override
     public void processElement(StreamRecord<Tuple2<Integer, Split>> element) throws Exception {
         if (null == nodeSplits) {
-            sharedObjectsContext.invoke(
+            invoke(
                     (getter, setter) -> {
                         List<LearningNode> layer = getter.get(SharedObjectsConstants.LAYER);
                         int numNodes = (layer.size() == 0) ? 1 : layer.size();
@@ -216,15 +205,5 @@ public class PostSplitsOperator extends AbstractStreamOperator<Integer>
         nodeSplitterState.clear();
         instanceUpdaterState.clear();
         super.close();
-    }
-
-    @Override
-    public void onSharedObjectsContextSet(SharedObjectsContext context) {
-        sharedObjectsContext = context;
-    }
-
-    @Override
-    public String getSharedObjectsAccessorID() {
-        return sharedObjectsAccessorID;
     }
 }

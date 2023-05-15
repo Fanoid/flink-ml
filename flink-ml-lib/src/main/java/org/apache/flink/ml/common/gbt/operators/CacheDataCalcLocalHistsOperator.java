@@ -30,14 +30,12 @@ import org.apache.flink.ml.common.gbt.defs.LearningNode;
 import org.apache.flink.ml.common.gbt.defs.TrainContext;
 import org.apache.flink.ml.common.gbt.typeinfo.BinnedInstanceSerializer;
 import org.apache.flink.ml.common.lossfunc.LossFunc;
-import org.apache.flink.ml.common.sharedobjects.SharedObjectsContext;
-import org.apache.flink.ml.common.sharedobjects.SharedObjectsStreamOperator;
+import org.apache.flink.ml.common.sharedobjects.AbstractSharedObjectsStreamOperator;
 import org.apache.flink.ml.linalg.DenseVector;
 import org.apache.flink.ml.linalg.SparseVector;
 import org.apache.flink.ml.linalg.Vector;
 import org.apache.flink.runtime.state.StateInitializationContext;
 import org.apache.flink.runtime.state.StateSnapshotContext;
-import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
 import org.apache.flink.streaming.api.operators.TwoInputStreamOperator;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.types.Row;
@@ -49,7 +47,6 @@ import org.apache.commons.collections.IteratorUtils;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import java.util.UUID;
 
 /**
  * Calculates local histograms for local data partition.
@@ -59,16 +56,14 @@ import java.util.UUID;
  * of (subtask index, (nodeId, featureId) pair index, Histogram).
  */
 public class CacheDataCalcLocalHistsOperator
-        extends AbstractStreamOperator<Tuple3<Integer, Integer, Histogram>>
+        extends AbstractSharedObjectsStreamOperator<Tuple3<Integer, Integer, Histogram>>
         implements TwoInputStreamOperator<Row, TrainContext, Tuple3<Integer, Integer, Histogram>>,
-                IterationListener<Tuple3<Integer, Integer, Histogram>>,
-                SharedObjectsStreamOperator {
+                IterationListener<Tuple3<Integer, Integer, Histogram>> {
 
     private static final String TREE_INITIALIZER_STATE_NAME = "tree_initializer";
     private static final String HIST_BUILDER_STATE_NAME = "hist_builder";
 
     private final BoostingStrategy strategy;
-    private final String sharedObjectsAccessorID;
 
     // States of local data.
     private transient ListStateWithCache<BinnedInstance> instancesCollecting;
@@ -76,12 +71,10 @@ public class CacheDataCalcLocalHistsOperator
     private transient TreeInitializer treeInitializer;
     private transient ListStateWithCache<HistBuilder> histBuilderState;
     private transient HistBuilder histBuilder;
-    private transient SharedObjectsContext sharedObjectsContext;
 
     public CacheDataCalcLocalHistsOperator(BoostingStrategy strategy) {
         super();
         this.strategy = strategy;
-        sharedObjectsAccessorID = getClass().getSimpleName() + "-" + UUID.randomUUID();
     }
 
     @Override
@@ -155,7 +148,7 @@ public class CacheDataCalcLocalHistsOperator
     @Override
     public void processElement2(StreamRecord<TrainContext> streamRecord) throws Exception {
         TrainContext rawTrainContext = streamRecord.getValue();
-        sharedObjectsContext.invoke(
+        invoke(
                 (getter, setter) ->
                         setter.set(SharedObjectsConstants.TRAIN_CONTEXT, rawTrainContext));
     }
@@ -165,7 +158,7 @@ public class CacheDataCalcLocalHistsOperator
             throws Exception {
         if (0 == epochWatermark) {
             // Initializes local state in first round.
-            sharedObjectsContext.invoke(
+            invoke(
                     (getter, setter) -> {
                         BinnedInstance[] instances =
                                 (BinnedInstance[])
@@ -193,7 +186,7 @@ public class CacheDataCalcLocalHistsOperator
                     });
         }
 
-        sharedObjectsContext.invoke(
+        invoke(
                 (getter, setter) -> {
                     TrainContext trainContext = getter.get(SharedObjectsConstants.TRAIN_CONTEXT);
                     Preconditions.checkArgument(
@@ -253,7 +246,7 @@ public class CacheDataCalcLocalHistsOperator
         treeInitializerState.clear();
         histBuilderState.clear();
 
-        sharedObjectsContext.invoke(
+        invoke(
                 (getter, setter) -> {
                     setter.set(SharedObjectsConstants.INSTANCES, new BinnedInstance[0]);
                     setter.set(SharedObjectsConstants.SHUFFLED_INDICES, new int[0]);
@@ -267,15 +260,5 @@ public class CacheDataCalcLocalHistsOperator
         treeInitializerState.clear();
         histBuilderState.clear();
         super.close();
-    }
-
-    @Override
-    public void onSharedObjectsContextSet(SharedObjectsContext context) {
-        this.sharedObjectsContext = context;
-    }
-
-    @Override
-    public String getSharedObjectsAccessorID() {
-        return sharedObjectsAccessorID;
     }
 }

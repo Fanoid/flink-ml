@@ -21,10 +21,8 @@ package org.apache.flink.ml.common.gbt.operators;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.ml.common.gbt.defs.Split;
-import org.apache.flink.ml.common.sharedobjects.SharedObjectsContext;
-import org.apache.flink.ml.common.sharedobjects.SharedObjectsStreamOperator;
+import org.apache.flink.ml.common.sharedobjects.AbstractSharedObjectsStreamOperator;
 import org.apache.flink.runtime.state.StateInitializationContext;
-import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.util.Preconditions;
@@ -35,7 +33,6 @@ import org.slf4j.LoggerFactory;
 import java.util.BitSet;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.UUID;
 
 /**
  * Reduces best splits for nodes.
@@ -43,33 +40,15 @@ import java.util.UUID;
  * <p>The input elements are tuples of (node index, (nodeId, featureId) pair index, Split). The
  * output elements are tuples of (node index, Split).
  */
-public class ReduceSplitsOperator extends AbstractStreamOperator<Tuple2<Integer, Split>>
-        implements OneInputStreamOperator<Tuple3<Integer, Integer, Split>, Tuple2<Integer, Split>>,
-                SharedObjectsStreamOperator {
+public class ReduceSplitsOperator
+        extends AbstractSharedObjectsStreamOperator<Tuple2<Integer, Split>>
+        implements OneInputStreamOperator<Tuple3<Integer, Integer, Split>, Tuple2<Integer, Split>> {
 
     private static final Logger LOG = LoggerFactory.getLogger(ReduceSplitsOperator.class);
-
-    private final String sharedObjectsAccessorID;
-
-    private transient SharedObjectsContext sharedObjectsContext;
 
     private Map<Integer, BitSet> nodeFeatureMap;
     private Map<Integer, Split> nodeBestSplit;
     private Map<Integer, Integer> nodeFeatureCounter;
-
-    public ReduceSplitsOperator() {
-        sharedObjectsAccessorID = getClass().getSimpleName() + "-" + UUID.randomUUID();
-    }
-
-    @Override
-    public void onSharedObjectsContextSet(SharedObjectsContext context) {
-        sharedObjectsContext = context;
-    }
-
-    @Override
-    public String getSharedObjectsAccessorID() {
-        return sharedObjectsAccessorID;
-    }
 
     @Override
     public void initializeState(StateInitializationContext context) throws Exception {
@@ -84,7 +63,7 @@ public class ReduceSplitsOperator extends AbstractStreamOperator<Tuple2<Integer,
         if (nodeFeatureMap.isEmpty()) {
             Preconditions.checkState(nodeBestSplit.isEmpty());
             nodeFeatureCounter.clear();
-            sharedObjectsContext.invoke(
+            invoke(
                     (getter, setter) -> {
                         int[] nodeFeaturePairs =
                                 getter.get(SharedObjectsConstants.NODE_FEATURE_PAIRS);
@@ -103,7 +82,7 @@ public class ReduceSplitsOperator extends AbstractStreamOperator<Tuple2<Integer,
         if (featureMap.isEmpty()) {
             LOG.debug("Received split for new node {}", nodeId);
         }
-        sharedObjectsContext.invoke(
+        invoke(
                 (getter, setter) -> {
                     int[] nodeFeaturePairs = getter.get(SharedObjectsConstants.NODE_FEATURE_PAIRS);
                     Preconditions.checkState(nodeId == nodeFeaturePairs[pairId * 2]);
@@ -121,10 +100,5 @@ public class ReduceSplitsOperator extends AbstractStreamOperator<Tuple2<Integer,
             nodeFeatureMap.remove(nodeId);
             nodeFeatureCounter.remove(nodeId);
         }
-    }
-
-    @Override
-    public void close() throws Exception {
-        super.close();
     }
 }
