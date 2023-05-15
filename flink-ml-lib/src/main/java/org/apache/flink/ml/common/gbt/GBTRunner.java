@@ -218,6 +218,7 @@ public class GBTRunner {
         strategy.regGamma = estimator.getRegGamma();
         strategy.regLambda = estimator.getRegLambda();
         strategy.baseScore = estimator.getBaseScore();
+        strategy.numThreads = estimator.getNumThreads();
 
         String lossTypeStr;
         if (estimator instanceof GBTClassifier) {

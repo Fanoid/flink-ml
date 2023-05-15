@@ -20,11 +20,10 @@ package org.apache.flink.ml.common.gbt.operators;
 
 import org.apache.flink.api.common.functions.RichFlatMapFunction;
 import org.apache.flink.api.java.tuple.Tuple2;
-import org.apache.flink.api.java.tuple.Tuple3;
+import org.apache.flink.api.java.tuple.Tuple5;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.ml.common.gbt.defs.Histogram;
 import org.apache.flink.util.Collector;
-import org.apache.flink.util.Preconditions;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,17 +35,16 @@ import java.util.Map;
 /**
  * This operator reduces histograms for (nodeId, featureId) pairs.
  *
- * <p>The input elements are tuples of (subtask index, (nodeId, featureId) pair index, Histogram).
- * The output elements are tuples of ((nodeId, featureId) pair index, Histogram).
+ * <p>The input elements are tuples of (subtask index, (nodeId, featureId) pair index, sliceId,
+ * numSlices, Histogram). The output elements are tuples of ((nodeId, featureId) pair index,
+ * Histogram).
  */
 public class ReduceHistogramFunction
         extends RichFlatMapFunction<
-                Tuple3<Integer, Integer, Histogram>, Tuple2<Integer, Histogram>> {
+                Tuple5<Integer, Integer, Integer, Integer, Histogram>, Tuple2<Integer, Histogram>> {
 
     private static final Logger LOG = LoggerFactory.getLogger(ReduceHistogramFunction.class);
-
-    private final Map<Integer, BitSet> pairAccepted = new HashMap<>();
-    private final Map<Integer, Histogram> pairHistogram = new HashMap<>();
+    private final Map<Integer, AccumulateState> pairState = new HashMap<>();
     private int numSubtasks;
 
     @Override
@@ -56,26 +54,44 @@ public class ReduceHistogramFunction
 
     @Override
     public void flatMap(
-            Tuple3<Integer, Integer, Histogram> value, Collector<Tuple2<Integer, Histogram>> out)
+            Tuple5<Integer, Integer, Integer, Integer, Histogram> value,
+            Collector<Tuple2<Integer, Histogram>> out)
             throws Exception {
         int sourceSubtaskId = value.f0;
         int pairId = value.f1;
-        Histogram histogram = value.f2;
+        int numSlices = value.f3;
+        Histogram histogram = value.f4;
 
-        BitSet accepted = pairAccepted.getOrDefault(pairId, new BitSet(numSubtasks));
-        if (accepted.isEmpty()) {
+        AccumulateState state;
+        if (pairState.containsKey(pairId)) {
+            state = pairState.get(pairId);
+        } else {
+            state = new AccumulateState();
+            state.receivedSubtasks = new BitSet(numSubtasks);
+            pairState.put(pairId, state);
             LOG.debug("Received histogram for new pair {}", pairId);
         }
-        Preconditions.checkState(!accepted.get(sourceSubtaskId));
-        accepted.set(sourceSubtaskId);
-        pairAccepted.put(pairId, accepted);
 
-        pairHistogram.compute(pairId, (k, v) -> null == v ? histogram : v.accumulate(histogram));
-        if (numSubtasks == accepted.cardinality()) {
-            out.collect(Tuple2.of(pairId, pairHistogram.get(pairId)));
-            LOG.debug("Output accumulated histogram for pair {}", pairId);
-            pairAccepted.remove(pairId);
-            pairHistogram.remove(pairId);
+        if (!state.receivedSubtasks.get(sourceSubtaskId)) {
+            state.receivedSubtasks.set(sourceSubtaskId);
+            state.totalSlices += numSlices;
         }
+        state.numReceivedSlices += 1;
+        state.histogram =
+                null == state.histogram ? histogram : state.histogram.accumulate(histogram);
+
+        if (numSubtasks == state.receivedSubtasks.cardinality()
+                && state.numReceivedSlices == state.totalSlices) {
+            out.collect(Tuple2.of(pairId, state.histogram));
+            LOG.debug("Output accumulated histogram for pair {}", pairId);
+            pairState.remove(pairId);
+        }
+    }
+
+    private static class AccumulateState {
+        public BitSet receivedSubtasks = null;
+        public int totalSlices = 0;
+        public int numReceivedSlices = 0;
+        public Histogram histogram = null;
     }
 }

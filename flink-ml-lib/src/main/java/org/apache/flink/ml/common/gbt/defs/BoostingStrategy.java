@@ -114,6 +114,9 @@ public class BoostingStrategy implements Serializable {
      */
     public Double baseScore;
 
+    /** Number of threads used in parallelized computation. */
+    public int numThreads;
+
     // Derived parameters.
     /** Maximum number leaves. */
     public int maxNumLeaves;

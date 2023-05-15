@@ -135,6 +135,13 @@ public interface BaseGBTParams<T>
                     Integer.MAX_VALUE,
                     ParamValidators.gtEq(2));
 
+    Param<Integer> NUM_THREADS =
+            new IntParam(
+                    "numThreads",
+                    "Number of threads used in parallelized computation.",
+                    1,
+                    ParamValidators.gtEq(1));
+
     default double getRegLambda() {
         return get(REG_LAMBDA);
     }
@@ -253,5 +260,13 @@ public interface BaseGBTParams<T>
 
     default T setMaxCategoriesNum(Integer value) {
         return set(MAX_CATEGORIES_NUM, value);
+    }
+
+    default int getNumThreads() {
+        return get(NUM_THREADS);
+    }
+
+    default T setNumThreads(int value) {
+        return set(NUM_THREADS, value);
     }
 }
