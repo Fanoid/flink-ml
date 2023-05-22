@@ -107,6 +107,9 @@ public class GBTRunner {
                 .map(
                         value -> {
                             Map<Integer, Double> featureImportanceMap = new HashMap<>();
+                            for (int i = 0; i < value.featureNames.size(); i += 1) {
+                                featureImportanceMap.put(i, 0.);
+                            }
                             double sum = 0.;
                             for (List<Node> tree : value.allTrees) {
                                 for (Node node : tree) {
