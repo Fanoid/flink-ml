@@ -16,21 +16,30 @@
  * limitations under the License.
  */
 
-package org.apache.flink.ml.common.datastream.purefunc;
+package org.apache.flink.ml.common.computation.builder;
 
-import org.apache.flink.annotation.Experimental;
-import org.apache.flink.api.common.functions.RichMapFunction;
-import org.apache.flink.api.common.functions.RuntimeContext;
+import org.apache.flink.api.java.functions.KeySelector;
 
 /**
- * Similar to {@link RichMapFunction} but with an addition broadcast parameter. Compared to {@link
- * RichMapFunction} with {@link RuntimeContext#getBroadcastVariable}, this interface can be used in
- * a broader situations since it involves no Flink runtime.
+ * Represents a dataset with partition strategy.
  *
- * @param <IN> Type of input elements.
- * @param <OUT> Type of output elements.
- * @param <BC> Type of broadcast element.
+ * @param <T> The type of record.
  */
-@Experimental
-public abstract class RichMapWithBcPureFunc<IN, OUT, BC> extends AbstractRichFunc
-        implements MapWithBcPureFunc<IN, OUT, BC> {}
+public class PartitionedData<T> extends Data<T> {
+    public final PartitionStrategy partitionStrategy;
+
+    private final Data<T> upstream;
+    private final KeySelector<T, ?> keySelector;
+
+    PartitionedData(Data<T> data, PartitionStrategy partitionStrategy) {
+        this(data, partitionStrategy, null);
+    }
+
+    <K> PartitionedData(
+            Data<T> data, PartitionStrategy partitionStrategy, KeySelector<T, K> keySelector) {
+        super(data.type);
+        this.upstream = data;
+        this.partitionStrategy = partitionStrategy;
+        this.keySelector = keySelector;
+    }
+}

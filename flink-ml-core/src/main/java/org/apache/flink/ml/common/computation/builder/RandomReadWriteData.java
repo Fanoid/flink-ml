@@ -16,14 +16,19 @@
  * limitations under the License.
  */
 
-package org.apache.flink.ml.common.datastream.purefunc;
+package org.apache.flink.ml.common.computation.builder;
 
-import org.apache.flink.annotation.Experimental;
+import org.apache.flink.api.java.typeutils.ListTypeInfo;
 
-/** Context for pure functions. */
-@Experimental
-public interface PureFuncContext {
-    int getNumSubtasks();
+import java.util.List;
 
-    int getSubtaskId();
+/**
+ * Represents a dataset with partition strategy.
+ *
+ * @param <T> The type of record.
+ */
+public class RandomReadWriteData<T> extends Data<List<T>> {
+    RandomReadWriteData(Data<T> data) {
+        super(new ListTypeInfo<>(data.type));
+    }
 }

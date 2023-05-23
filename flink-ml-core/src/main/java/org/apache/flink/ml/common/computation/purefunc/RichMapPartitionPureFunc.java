@@ -16,28 +16,21 @@
  * limitations under the License.
  */
 
-package org.apache.flink.ml.common.datastream.purefunc;
+package org.apache.flink.ml.common.computation.purefunc;
 
 import org.apache.flink.annotation.Experimental;
-
-import java.io.Serializable;
+import org.apache.flink.api.common.functions.MapFunction;
+import org.apache.flink.api.common.functions.RichMapFunction;
+import org.apache.flink.api.common.functions.RuntimeContext;
 
 /**
- * A base interface for all rich pure functions. This class defines methods for the life cycle of
- * the functions, as well as methods to access the context in which the functions are executed.
+ * Similar to {@link MapFunction} but with an addition broadcast parameter. Compared to {@link
+ * RichMapFunction} with {@link RuntimeContext#getBroadcastVariable}, this interface can be used in
+ * a broader situations since it involves no Flink runtime.
+ *
+ * @param <IN> Type of input elements.
+ * @param <OUT> Type of output elements.
  */
 @Experimental
-public interface RichPureFunc extends Serializable {
-    void open() throws Exception;
-
-    void close() throws Exception;
-
-    default void reset() throws Exception {
-        close();
-        open();
-    }
-
-    PureFuncContext getContext();
-
-    void setContext(PureFuncContext context);
-}
+public abstract class RichMapPartitionPureFunc<IN, OUT> extends AbstractRichPureFunc<OUT>
+        implements MapPartitionPureFunc<IN, OUT> {}

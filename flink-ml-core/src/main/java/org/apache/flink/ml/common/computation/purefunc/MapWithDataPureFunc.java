@@ -16,12 +16,13 @@
  * limitations under the License.
  */
 
-package org.apache.flink.ml.common.datastream.purefunc;
+package org.apache.flink.ml.common.computation.purefunc;
 
 import org.apache.flink.annotation.Experimental;
 import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.functions.RichMapFunction;
 import org.apache.flink.api.common.functions.RuntimeContext;
+import org.apache.flink.util.Collector;
 
 /**
  * Similar to {@link MapFunction} but with an addition broadcast parameter. Compared to {@link
@@ -30,11 +31,15 @@ import org.apache.flink.api.common.functions.RuntimeContext;
  *
  * @param <IN> Type of input elements.
  * @param <OUT> Type of output elements.
- * @param <BC> Type of broadcast element.
  */
 @Experimental
 @FunctionalInterface
-public interface MapWithBcPureFunc<IN, OUT, BC> extends PureFunc {
-    // TODO: use List<BC> instead of BC
-    OUT map(IN elem, BC bc);
+public interface MapWithDataPureFunc<IN, DATA, OUT>
+        extends IterativeMapWithDataPureFunc<IN, DATA, OUT> {
+    void map(IN value, DATA data, Collector<OUT> out);
+
+    @Override
+    default void map(IN value, DATA data, int iteration, Collector<OUT> out) {
+        map(value, data, out);
+    }
 }

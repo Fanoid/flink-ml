@@ -16,16 +16,21 @@
  * limitations under the License.
  */
 
-package org.apache.flink.ml.common.datastream.purefunc;
+package org.apache.flink.ml.common.computation.purefunc;
 
 import org.apache.flink.annotation.Experimental;
-
-import java.io.Serializable;
+import org.apache.flink.api.common.functions.RichMapFunction;
+import org.apache.flink.api.common.functions.RuntimeContext;
 
 /**
- * The base interface for all pure user-defined functions. `pure` here means that the function is
- * independent of the Flink runtime, making it applicable in a wider range of situations than {@link
- * org.apache.flink.api.common.functions.Function}.
+ * Similar to {@link RichMapFunction} but with an addition broadcast parameter. Compared to {@link
+ * RichMapFunction} with {@link RuntimeContext#getBroadcastVariable}, this interface can be used in
+ * a broader situations since it involves no Flink runtime.
+ *
+ * @param <IN> Type of input elements.
+ * @param <OUT> Type of output elements.
+ * @param <BC> Type of broadcast element.
  */
 @Experimental
-public interface PureFunc extends Serializable {}
+public abstract class RichMapWithBcPureFunc<IN, OUT, BC> extends AbstractRichPureFunc<OUT>
+        implements MapWithBcPureFunc<IN, OUT, BC> {}

@@ -29,9 +29,9 @@ import org.apache.flink.api.java.typeutils.TypeExtractor;
 import org.apache.flink.iteration.IterationListener;
 import org.apache.flink.iteration.datacache.nonkeyed.ListStateWithCache;
 import org.apache.flink.iteration.operator.OperatorStateUtils;
-import org.apache.flink.ml.common.datastream.purefunc.MapWithBcPureFunc;
-import org.apache.flink.ml.common.datastream.purefunc.PureFuncContextImpl;
-import org.apache.flink.ml.common.datastream.purefunc.RichPureFunc;
+import org.apache.flink.ml.common.computation.purefunc.MapWithBcPureFunc;
+import org.apache.flink.ml.common.computation.purefunc.PureFuncContextImpl;
+import org.apache.flink.ml.common.computation.purefunc.RichPureFunc;
 import org.apache.flink.runtime.state.StateInitializationContext;
 import org.apache.flink.runtime.state.StateSnapshotContext;
 import org.apache.flink.streaming.api.datastream.DataStream;
@@ -168,11 +168,13 @@ public class DataStreamInIterationUtils {
         public void open() throws Exception {
             super.open();
             if (func instanceof RichPureFunc) {
+                // TODO: fixit.
                 ((RichPureFunc) func)
                         .setContext(
                                 new PureFuncContextImpl(
                                         getRuntimeContext().getNumberOfParallelSubtasks(),
-                                        getRuntimeContext().getIndexOfThisSubtask()));
+                                        getRuntimeContext().getIndexOfThisSubtask(),
+                                        1));
                 ((RichPureFunc) func).open();
             }
         }

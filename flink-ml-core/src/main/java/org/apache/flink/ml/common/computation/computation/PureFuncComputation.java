@@ -16,29 +16,34 @@
  * limitations under the License.
  */
 
-package org.apache.flink.ml.common.datastream.purefunc;
+package org.apache.flink.ml.common.computation.computation;
 
-import org.apache.flink.annotation.Experimental;
+import org.apache.flink.ml.common.computation.purefunc.PureFunc;
 
-/** Context for pure functions. */
-@Experimental
-public class PureFuncContextImpl implements PureFuncContext {
+/** Computation wrapped from PureFunc. */
+public class PureFuncComputation implements Computation {
+    private final PureFunc func;
+    private final int numInputs;
+    private final int numOutputs;
 
-    int numSubtasks;
-    int subtaskId;
-
-    public PureFuncContextImpl(int numSubtasks, int subtaskId) {
-        this.numSubtasks = numSubtasks;
-        this.subtaskId = subtaskId;
+    public PureFuncComputation(PureFunc func) {
+        this.func = func;
+        // TODO: calculate it from PureFunc
+        numInputs = 1;
+        numOutputs = 1;
     }
 
     @Override
-    public int getNumSubtasks() {
-        return numSubtasks;
+    public int getNumInputs() {
+        return numInputs;
     }
 
     @Override
-    public int getSubtaskId() {
-        return subtaskId;
+    public int getNumOutputs() {
+        return numOutputs;
+    }
+
+    public PureFunc getFunc() {
+        return func;
     }
 }

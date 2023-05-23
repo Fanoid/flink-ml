@@ -16,28 +16,25 @@
  * limitations under the License.
  */
 
-package org.apache.flink.ml.common.datastream.purefunc;
+package org.apache.flink.ml.common.computation.purefunc;
 
 import org.apache.flink.annotation.Experimental;
+import org.apache.flink.api.common.functions.MapFunction;
+import org.apache.flink.api.common.functions.RichMapFunction;
+import org.apache.flink.api.common.functions.RuntimeContext;
 
-/** An abstract stub implementation for rich pure user-defined functions. */
+/**
+ * Similar to {@link MapFunction} but with an addition broadcast parameter. Compared to {@link
+ * RichMapFunction} with {@link RuntimeContext#getBroadcastVariable}, this interface can be used in
+ * a broader situations since it involves no Flink runtime.
+ *
+ * @param <IN> Type of input elements.
+ * @param <OUT> Type of output elements.
+ * @param <BC> Type of broadcast element.
+ */
 @Experimental
-public abstract class AbstractRichFunc implements RichPureFunc {
-    private transient PureFuncContext context;
-
-    @Override
-    public void open() throws Exception {}
-
-    @Override
-    public void close() throws Exception {}
-
-    @Override
-    public PureFuncContext getContext() {
-        return context;
-    }
-
-    @Override
-    public void setContext(PureFuncContext context) {
-        this.context = context;
-    }
+@FunctionalInterface
+public interface MapWithBcPureFunc<IN, OUT, BC> extends SISOPureFunc<IN, OUT> {
+    // TODO: use List<BC> instead of BC
+    OUT map(IN elem, BC bc);
 }
