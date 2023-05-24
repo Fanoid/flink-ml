@@ -95,7 +95,10 @@ class Preprocess {
                         dataTable, continuousCols, strategy.maxBins, strategy.seed);
         dataTable = continuousMappedDataAndModelData.f0;
         DataStream<FeatureMeta> continuousFeatureMeta =
-                buildContinuousFeatureMeta(continuousMappedDataAndModelData.f1, continuousCols);
+                buildContinuousFeatureMeta(
+                        continuousMappedDataAndModelData.f1,
+                        continuousCols,
+                        strategy.isInputVector);
 
         // Maps categorical columns to integers, and obtain string indexer model.
         DataStream<FeatureMeta> categoricalFeatureMeta;
@@ -152,7 +155,8 @@ class Preprocess {
                         dataTable, strategy.featuresCols[0], strategy.maxBins, strategy.seed);
         return Tuple2.of(
                 mappedDataAndBinEdges.f0,
-                buildContinuousFeatureMeta(mappedDataAndBinEdges.f1, null));
+                buildContinuousFeatureMeta(
+                        mappedDataAndBinEdges.f1, strategy.featuresCols, strategy.isInputVector));
     }
 
     /** Builds {@link FeatureMeta} from {@link StringIndexerModelData}. */
@@ -175,12 +179,17 @@ class Preprocess {
 
     /** Builds {@link FeatureMeta} from bin edges. */
     private static DataStream<FeatureMeta> buildContinuousFeatureMeta(
-            DataStream<double[][]> discretizerModelData, String[] cols) {
+            DataStream<double[][]> discretizerModelData, String[] cols, boolean isInputVector) {
+        // Column name template for vector case
+        final String vectorColNameTemplate = "_%s_f%d";
         return discretizerModelData
                 .<FeatureMeta>flatMap(
                         (d, out) -> {
                             for (int i = 0; i < d.length; i += 1) {
-                                String name = (null != cols) ? cols[i] : "_vec_f" + i;
+                                String name =
+                                        (!isInputVector)
+                                                ? cols[i]
+                                                : String.format(vectorColNameTemplate, cols[0], i);
                                 out.collect(FeatureMeta.continuous(name, d[i].length - 1, d[i]));
                             }
                         })
