@@ -514,4 +514,24 @@ public class GBTClassifierTest extends AbstractTestBase {
                         $(gbtc.getProbabilityCol()));
         verifyPredictionResult(output, outputRows);
     }
+
+    @Test
+    public void testFitAndPredictWithMT() throws Exception {
+        GBTClassifier gbtc =
+                new GBTClassifier()
+                        .setFeaturesCols("f0", "f1", "f2")
+                        .setCategoricalCols("f2")
+                        .setLabelCol("cls_label")
+                        .setRegGamma(0.)
+                        .setMaxBins(3)
+                        .setNumThreads(4)
+                        .setSeed(123);
+        GBTClassifierModel model = gbtc.fit(inputTable);
+        Table output =
+                model.transform(inputTable)[0].select(
+                        $(gbtc.getPredictionCol()),
+                        $(gbtc.getRawPredictionCol()),
+                        $(gbtc.getProbabilityCol()));
+        verifyPredictionResult(output, outputRows);
+    }
 }

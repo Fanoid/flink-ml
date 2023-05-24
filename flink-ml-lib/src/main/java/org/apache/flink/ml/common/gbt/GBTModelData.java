@@ -37,6 +37,7 @@ import org.apache.flink.ml.common.gbt.typeinfo.GBTModelDataTypeInfoFactory;
 import org.apache.flink.ml.feature.stringindexer.StringIndexerModel;
 import org.apache.flink.ml.linalg.SparseVector;
 import org.apache.flink.ml.linalg.Vector;
+import org.apache.flink.ml.linalg.Vectors;
 import org.apache.flink.ml.regression.gbtregressor.GBTRegressorModel;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.table.api.Table;
@@ -157,8 +158,12 @@ public class GBTModelData {
     public IntDoubleHashMap rowToFeatures(Row row, String[] featuresCols) {
         IntDoubleHashMap features = new IntDoubleHashMap();
         if (isInputVector) {
-            Vector vec = row.getFieldAs(featuresCols[0]);
-            SparseVector sv = vec.toSparse();
+            // TODO: fix this after Designer supports storing meta information.
+            Object obj = row.getField(featuresCols[0]);
+            SparseVector sv =
+                    obj instanceof String
+                            ? parseLibSVMStr((String) obj, Integer.MAX_VALUE)
+                            : row.<Vector>getFieldAs(featuresCols[0]).toSparse();
             for (int i = 0; i < sv.indices.length; i += 1) {
                 features.put(sv.indices[i], sv.values[i]);
             }
@@ -176,6 +181,18 @@ public class GBTModelData {
             }
         }
         return features;
+    }
+
+    static SparseVector parseLibSVMStr(String s, int size) {
+        String[] split = s.split("[ :]");
+        int numElems = split.length / 2;
+        int[] indices = new int[numElems];
+        double[] values = new double[numElems];
+        for (int i = 0; i < numElems; i += 1) {
+            indices[i] = Integer.parseInt(split[2 * i]);
+            values[i] = Double.parseDouble(split[2 * i + 1]);
+        }
+        return Vectors.sparse(size, indices, values);
     }
 
     public double predictRaw(IntDoubleHashMap rawFeatures) {
