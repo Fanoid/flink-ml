@@ -60,6 +60,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import static org.apache.flink.table.api.Expressions.$;
 
@@ -166,6 +167,12 @@ class Preprocess {
                 .<FeatureMeta>flatMap(
                         (d, out) -> {
                             Preconditions.checkArgument(d.stringArrays.length == cols.length);
+                            LOG.info(
+                                    "#categories for {}: {}",
+                                    cols,
+                                    Arrays.stream(d.stringArrays)
+                                            .map(arr -> arr.length)
+                                            .collect(Collectors.toList()));
                             for (int i = 0; i < cols.length; i += 1) {
                                 out.collect(
                                         FeatureMeta.categorical(

@@ -53,6 +53,8 @@ import org.apache.flink.util.Preconditions;
 
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.math3.analysis.function.Logit;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -66,6 +68,8 @@ import java.util.stream.Collectors;
 
 /** Runs a gradient boosting trees implementation. */
 public class GBTRunner {
+
+    private static final Logger LOG = LoggerFactory.getLogger(GBTRunner.class);
 
     private static boolean isVectorType(TypeInformation<?> typeInfo) {
         return typeInfo instanceof DenseVectorTypeInfo
@@ -258,9 +262,11 @@ public class GBTRunner {
                 (StreamTableEnvironment) ((TableImpl) dataTable).getTableEnvironment();
         DataStream<Row> data = tEnv.toDataStream(dataTable);
         if (null == strategy.baseScore) {
+            LOG.info("Calculate prior by scanning data.");
             return DataStreamUtils.aggregate(data, new LabelSumCountFunction(strategy.labelCol))
                     .map(new CalcPriorFunction(strategy.lossType));
         } else {
+            LOG.info("Use prior based on provided base score: {}", strategy.baseScore);
             double prior = baseScoreToPrior(strategy.baseScore, strategy.lossType);
             return tEnv.toDataStream(tEnv.fromValues(prior), Double.class);
         }
