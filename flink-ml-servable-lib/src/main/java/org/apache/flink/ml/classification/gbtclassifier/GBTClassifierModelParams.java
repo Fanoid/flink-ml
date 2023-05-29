@@ -23,7 +23,7 @@ import org.apache.flink.ml.common.param.HasProbabilityCol;
 import org.apache.flink.ml.common.param.HasRawPredictionCol;
 
 /**
- * Parameters for {@link GBTClassifierModel}.
+ * Parameters for GBTClassifierModel and {@link GBTClassifierModelServable}.
  *
  * @param <T> The class type of this instance.
  */

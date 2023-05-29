@@ -18,45 +18,31 @@
 
 package org.apache.flink.ml.common.gbt;
 
-import org.apache.flink.api.common.serialization.Encoder;
+import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.typeinfo.TypeInfo;
-import org.apache.flink.api.common.typeinfo.TypeInformation;
-import org.apache.flink.configuration.Configuration;
-import org.apache.flink.connector.file.src.reader.SimpleStreamFormat;
-import org.apache.flink.core.fs.FSDataInputStream;
-import org.apache.flink.core.memory.DataInputView;
 import org.apache.flink.core.memory.DataInputViewStreamWrapper;
-import org.apache.flink.core.memory.DataOutputView;
 import org.apache.flink.core.memory.DataOutputViewStreamWrapper;
-import org.apache.flink.ml.classification.gbtclassifier.GBTClassifierModel;
-import org.apache.flink.ml.common.gbt.defs.FeatureMeta;
+import org.apache.flink.ml.classification.gbtclassifier.GBTClassifierModelServable;
 import org.apache.flink.ml.common.gbt.defs.Node;
-import org.apache.flink.ml.common.gbt.defs.TrainContext;
 import org.apache.flink.ml.common.gbt.typeinfo.GBTModelDataSerializer;
 import org.apache.flink.ml.common.gbt.typeinfo.GBTModelDataTypeInfoFactory;
-import org.apache.flink.ml.feature.stringindexer.StringIndexerModel;
 import org.apache.flink.ml.linalg.SparseVector;
 import org.apache.flink.ml.linalg.Vector;
 import org.apache.flink.ml.linalg.Vectors;
-import org.apache.flink.ml.regression.gbtregressor.GBTRegressorModel;
-import org.apache.flink.streaming.api.datastream.DataStream;
-import org.apache.flink.table.api.Table;
-import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
-import org.apache.flink.table.api.internal.TableImpl;
-import org.apache.flink.types.Row;
 
 import org.eclipse.collections.impl.map.mutable.primitive.IntDoubleHashMap;
 import org.eclipse.collections.impl.map.mutable.primitive.IntObjectHashMap;
 import org.eclipse.collections.impl.map.mutable.primitive.ObjectIntHashMap;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
-import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.List;
+import java.util.function.Function;
 
 /**
- * Model data of {@link GBTClassifierModel} and {@link GBTRegressorModel}.
+ * Model data of {@link GBTClassifierModelServable}.
  *
  * <p>This class also provides methods to convert model data from Table to Datastream, and classes
  * to save/load model data.
@@ -99,48 +85,7 @@ public class GBTModelData {
         this.isCategorical = isCategorical;
     }
 
-    public static GBTModelData from(TrainContext trainContext, List<List<Node>> allTrees) {
-        List<String> featureNames = new ArrayList<>();
-        IntObjectHashMap<ObjectIntHashMap<String>> categoryToIdMaps = new IntObjectHashMap<>();
-        IntObjectHashMap<double[]> featureIdToBinEdges = new IntObjectHashMap<>();
-        BitSet isCategorical = new BitSet();
-
-        FeatureMeta[] featureMetas = trainContext.featureMetas;
-        for (int k = 0; k < featureMetas.length; k += 1) {
-            FeatureMeta featureMeta = featureMetas[k];
-            featureNames.add(featureMeta.name);
-            if (featureMeta instanceof FeatureMeta.CategoricalFeatureMeta) {
-                String[] categories = ((FeatureMeta.CategoricalFeatureMeta) featureMeta).categories;
-                ObjectIntHashMap<String> categoryToId = new ObjectIntHashMap<>();
-                for (int i = 0; i < categories.length; i += 1) {
-                    categoryToId.put(categories[i], i);
-                }
-                categoryToIdMaps.put(k, categoryToId);
-                isCategorical.set(k);
-            } else if (featureMeta instanceof FeatureMeta.ContinuousFeatureMeta) {
-                featureIdToBinEdges.put(
-                        k, ((FeatureMeta.ContinuousFeatureMeta) featureMeta).binEdges);
-            }
-        }
-        return new GBTModelData(
-                trainContext.strategy.taskType.name(),
-                trainContext.strategy.isInputVector,
-                trainContext.prior,
-                trainContext.strategy.stepSize,
-                allTrees,
-                featureNames,
-                categoryToIdMaps,
-                featureIdToBinEdges,
-                isCategorical);
-    }
-
-    public static DataStream<GBTModelData> getModelDataStream(Table modelDataTable) {
-        StreamTableEnvironment tEnv =
-                (StreamTableEnvironment) ((TableImpl) modelDataTable).getTableEnvironment();
-        return tEnv.toDataStream(modelDataTable).map(x -> x.getFieldAs(0));
-    }
-
-    /** The mapping computation is from {@link StringIndexerModel}. */
+    /** The mapping computation is from StringIndexerModel. */
     private static int mapCategoricalFeature(ObjectIntHashMap<String> categoryToId, Object v) {
         String s;
         if (v instanceof String) {
@@ -155,21 +100,42 @@ public class GBTModelData {
         return categoryToId.getIfAbsent(s, categoryToId.size());
     }
 
-    public IntDoubleHashMap rowToFeatures(Row row, String[] featuresCols) {
+    /**
+     * Reads and deserializes the model data from the input stream.
+     *
+     * @param inputStream The stream to read from.
+     * @return The model data instance.
+     */
+    public static GBTModelData decode(InputStream inputStream) throws IOException {
+        DataInputViewStreamWrapper dataInputViewStreamWrapper =
+                new DataInputViewStreamWrapper(inputStream);
+        GBTModelDataSerializer serializer = new GBTModelDataSerializer();
+        return serializer.deserialize(dataInputViewStreamWrapper);
+    }
+
+    /**
+     * Constructs features from arbitrary objects.
+     *
+     * @param featureKeys Keys of features.
+     * @param getFeature A function to get feature values.
+     * @return The features.
+     * @param <K> The type of feature keys.
+     */
+    public <K> IntDoubleHashMap toFeatures(K[] featureKeys, Function<K, Object> getFeature) {
         IntDoubleHashMap features = new IntDoubleHashMap();
         if (isInputVector) {
             // TODO: fix this after Designer supports storing meta information.
-            Object obj = row.getField(featuresCols[0]);
+            Object obj = getFeature.apply(featureKeys[0]);
             SparseVector sv =
                     obj instanceof String
                             ? parseLibSVMStr((String) obj, Integer.MAX_VALUE)
-                            : row.<Vector>getFieldAs(featuresCols[0]).toSparse();
+                            : ((Vector) obj).toSparse();
             for (int i = 0; i < sv.indices.length; i += 1) {
                 features.put(sv.indices[i], sv.values[i]);
             }
         } else {
-            for (int i = 0; i < featuresCols.length; i += 1) {
-                Object obj = row.getField(featuresCols[i]);
+            for (int i = 0; i < featureKeys.length; i += 1) {
+                Object obj = getFeature.apply(featureKeys[i]);
                 double v;
                 if (isCategorical.get(i)) {
                     v = mapCategoricalFeature(categoryToIdMaps.get(i), obj);
@@ -195,6 +161,12 @@ public class GBTModelData {
         return Vectors.sparse(size, indices, values);
     }
 
+    /**
+     * Get raw prediction for the features.
+     *
+     * @param rawFeatures The features.
+     * @return Raw prediction.
+     */
     public double predictRaw(IntDoubleHashMap rawFeatures) {
         double v = prior;
         for (List<Node> treeNodes : allTrees) {
@@ -208,51 +180,23 @@ public class GBTModelData {
         return v;
     }
 
+    /**
+     * Serializes the instance and writes to the output stream.
+     *
+     * @param outputStream The stream to write to.
+     */
+    @VisibleForTesting
+    public void encode(OutputStream outputStream) throws IOException {
+        DataOutputViewStreamWrapper dataOutputViewStreamWrapper =
+                new DataOutputViewStreamWrapper(outputStream);
+        GBTModelDataSerializer serializer = new GBTModelDataSerializer();
+        serializer.serialize(this, dataOutputViewStreamWrapper);
+    }
+
     @Override
     public String toString() {
         return String.format(
                 "GBTModelData{type=%s, prior=%s, allTrees=%s, categoryToIdMaps=%s, featureIdToBinEdges=%s, isCategorical=%s}",
                 type, prior, allTrees, categoryToIdMaps, featureIdToBinEdges, isCategorical);
-    }
-
-    /** Encoder for {@link GBTModelData}. */
-    public static class ModelDataEncoder implements Encoder<GBTModelData> {
-        @Override
-        public void encode(GBTModelData modelData, OutputStream outputStream) throws IOException {
-            DataOutputView dataOutputView = new DataOutputViewStreamWrapper(outputStream);
-            final GBTModelDataSerializer serializer = GBTModelDataSerializer.INSTANCE;
-            serializer.serialize(modelData, dataOutputView);
-        }
-    }
-
-    /** Decoder for {@link GBTModelData}. */
-    public static class ModelDataDecoder extends SimpleStreamFormat<GBTModelData> {
-        @Override
-        public Reader<GBTModelData> createReader(Configuration config, FSDataInputStream stream) {
-            return new Reader<GBTModelData>() {
-
-                private final GBTModelDataSerializer serializer = GBTModelDataSerializer.INSTANCE;
-
-                @Override
-                public GBTModelData read() {
-                    DataInputView source = new DataInputViewStreamWrapper(stream);
-                    try {
-                        return serializer.deserialize(source);
-                    } catch (IOException e) {
-                        return null;
-                    }
-                }
-
-                @Override
-                public void close() throws IOException {
-                    stream.close();
-                }
-            };
-        }
-
-        @Override
-        public TypeInformation<GBTModelData> getProducedType() {
-            return TypeInformation.of(GBTModelData.class);
-        }
     }
 }

@@ -21,6 +21,7 @@ package org.apache.flink.ml.servable.api;
 import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.ml.servable.types.DataType;
 
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
@@ -57,8 +58,8 @@ public class DataFrame {
             }
         }
 
-        this.columnNames = columnNames;
-        this.dataTypes = dataTypes;
+        this.columnNames = new ArrayList<>(columnNames);
+        this.dataTypes = new ArrayList<>(dataTypes);
         this.rows = rows;
     }
 

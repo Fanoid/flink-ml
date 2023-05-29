@@ -25,6 +25,7 @@ import org.apache.flink.ml.common.broadcast.BroadcastUtils;
 import org.apache.flink.ml.common.datastream.TableUtils;
 import org.apache.flink.ml.common.gbt.BaseGBTModel;
 import org.apache.flink.ml.common.gbt.GBTModelData;
+import org.apache.flink.ml.common.gbt.GBTModelDataUtil;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
@@ -61,7 +62,8 @@ public class GBTRegressorModel extends BaseGBTModel<GBTRegressorModel>
                 (StreamTableEnvironment) ((TableImpl) inputs[0]).getTableEnvironment();
         DataStream<Row> inputStream = tEnv.toDataStream(inputs[0]);
         final String broadcastModelKey = "broadcastModelKey";
-        DataStream<GBTModelData> modelDataStream = GBTModelData.getModelDataStream(modelDataTable);
+        DataStream<GBTModelData> modelDataStream =
+                GBTModelDataUtil.getModelDataStream(modelDataTable);
         RowTypeInfo inputTypeInfo = TableUtils.getRowTypeInfo(inputs[0].getResolvedSchema());
         RowTypeInfo outputTypeInfo =
                 new RowTypeInfo(
@@ -93,13 +95,13 @@ public class GBTRegressorModel extends BaseGBTModel<GBTRegressorModel>
         }
 
         @Override
-        public Row map(Row value) throws Exception {
+        public Row map(Row value) {
             if (null == modelData) {
                 modelData =
                         (GBTModelData)
                                 getRuntimeContext().getBroadcastVariable(broadcastModelKey).get(0);
             }
-            IntDoubleHashMap features = modelData.rowToFeatures(value, featuresCols);
+            IntDoubleHashMap features = modelData.toFeatures(featuresCols, value::getField);
             double pred = modelData.predictRaw(features);
             return Row.join(value, Row.of(pred));
         }

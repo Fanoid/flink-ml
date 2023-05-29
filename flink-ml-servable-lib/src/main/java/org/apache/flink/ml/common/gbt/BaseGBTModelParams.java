@@ -18,13 +18,12 @@
 
 package org.apache.flink.ml.common.gbt;
 
-import org.apache.flink.ml.classification.gbtclassifier.GBTClassifierModel;
+import org.apache.flink.ml.classification.gbtclassifier.GBTClassifierModelServable;
 import org.apache.flink.ml.common.param.HasFeaturesCols;
 import org.apache.flink.ml.common.param.HasPredictionCol;
-import org.apache.flink.ml.regression.gbtregressor.GBTRegressorModel;
 
 /**
- * Params of {@link GBTClassifierModel} and {@link GBTRegressorModel}.
+ * Params of {@link GBTClassifierModelServable}.
  *
  * <p>The value `featureCols` can be either one column name of vector type, or multiple columns
  * names of non-vector types. For the latter case, `categoricalCols` can be further set to
