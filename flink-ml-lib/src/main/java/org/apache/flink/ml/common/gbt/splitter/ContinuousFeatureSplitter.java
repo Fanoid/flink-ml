@@ -27,9 +27,15 @@ import org.apache.flink.ml.common.gbt.defs.Split;
 /** Splitter for a continuous feature. */
 public final class ContinuousFeatureSplitter extends HistogramFeatureSplitter {
 
+    private final boolean isUnseenMissing;
+
     public ContinuousFeatureSplitter(
-            int featureId, FeatureMeta featureMeta, BoostingStrategy strategy) {
+            int featureId,
+            FeatureMeta featureMeta,
+            BoostingStrategy strategy,
+            boolean isUnseenMissing) {
         super(featureId, featureMeta, strategy);
+        this.isUnseenMissing = isUnseenMissing;
     }
 
     @Override
@@ -61,7 +67,7 @@ public final class ContinuousFeatureSplitter extends HistogramFeatureSplitter {
                 missingGoLeft,
                 total.prediction(),
                 splitPoint,
-                !strategy.isInputVector,
+                isUnseenMissing,
                 ((FeatureMeta.ContinuousFeatureMeta) featureMeta).zeroBin);
     }
 }

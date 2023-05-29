@@ -237,50 +237,54 @@ public class KBinsDiscretizer
                 binEdges[columnId] =
                         new double[] {Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY};
             } else {
-                double[] tempBinEdges;
-                if (features.length > numBins) {
-                    double width = 1.0 * features.length / numBins;
-                    tempBinEdges = new double[numBins + 1];
-
-                    for (int binEdgeId = 0; binEdgeId < numBins; binEdgeId++) {
-                        tempBinEdges[binEdgeId] = features[(int) (binEdgeId * width)];
-                    }
-                    tempBinEdges[numBins] = features[features.length - 1];
-                } else {
-                    tempBinEdges = features;
-                }
-
-                // Bins with zero width should be converted to a non-empty bin.
-                Map<Double, Integer> edgesAndCnt = new HashMap<>(numBins);
-                for (double edge : tempBinEdges) {
-                    edgesAndCnt.put(edge, edgesAndCnt.getOrDefault(edge, 0) + 1);
-                }
-                List<Double> edges = new ArrayList<>();
-                for (Map.Entry<Double, Integer> edgeAndCnt : edgesAndCnt.entrySet()) {
-                    double edge = edgeAndCnt.getKey();
-                    int cnt = edgeAndCnt.getValue();
-                    edges.add(edge);
-                    if (cnt > 1) {
-                        edges.add(edge);
-                    }
-                }
-                tempBinEdges = edges.stream().mapToDouble(Double::doubleValue).toArray();
-                Arrays.sort(tempBinEdges);
-                int i = 1;
-                // If there are two consecutive bin edges with the same value, we update the right
-                // edge as the average of its two neighbors.
-                for (; i < tempBinEdges.length - 1; i++) {
-                    if (tempBinEdges[i] == tempBinEdges[i - 1]) {
-                        tempBinEdges[i] = (tempBinEdges[i + 1] + tempBinEdges[i - 1]) / 2;
-                    }
-                }
-                // If the last two bin edges are the same, we update the left bin edge as the
-                // average of its two neighbors.
-                if (tempBinEdges[i] == tempBinEdges[i - 1]) {
-                    tempBinEdges[i - 1] = (tempBinEdges[i] + tempBinEdges[i - 2]) / 2;
-                }
-                binEdges[columnId] = tempBinEdges;
+                binEdges[columnId] = removeDuplicatedBinEdges(features, numBins);
             }
+        }
+        return binEdges;
+    }
+
+    public static double[] removeDuplicatedBinEdges(double[] features, int numBins) {
+        double[] binEdges;
+        if (features.length > numBins) {
+            double width = 1.0 * features.length / numBins;
+            binEdges = new double[numBins + 1];
+
+            for (int binEdgeId = 0; binEdgeId < numBins; binEdgeId++) {
+                binEdges[binEdgeId] = features[(int) (binEdgeId * width)];
+            }
+            binEdges[numBins] = features[features.length - 1];
+        } else {
+            binEdges = features;
+        }
+
+        // Bins with zero width should be converted to a non-empty bin.
+        Map<Double, Integer> edgesAndCnt = new HashMap<>(numBins);
+        for (double edge : binEdges) {
+            edgesAndCnt.put(edge, edgesAndCnt.getOrDefault(edge, 0) + 1);
+        }
+        List<Double> edges = new ArrayList<>();
+        for (Map.Entry<Double, Integer> edgeAndCnt : edgesAndCnt.entrySet()) {
+            double edge = edgeAndCnt.getKey();
+            int cnt = edgeAndCnt.getValue();
+            edges.add(edge);
+            if (cnt > 1) {
+                edges.add(edge);
+            }
+        }
+        binEdges = edges.stream().mapToDouble(Double::doubleValue).toArray();
+        Arrays.sort(binEdges);
+        int i = 1;
+        // If there are two consecutive bin edges with the same value, we update the right
+        // edge as the average of its two neighbors.
+        for (; i < binEdges.length - 1; i++) {
+            if (binEdges[i] == binEdges[i - 1]) {
+                binEdges[i] = (binEdges[i + 1] + binEdges[i - 1]) / 2;
+            }
+        }
+        // If the last two bin edges are the same, we update the left bin edge as the
+        // average of its two neighbors.
+        if (binEdges[i] == binEdges[i - 1]) {
+            binEdges[i - 1] = (binEdges[i] + binEdges[i - 2]) / 2;
         }
         return binEdges;
     }

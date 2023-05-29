@@ -57,6 +57,13 @@ public class BoostingStrategy implements Serializable {
     public int maxBins;
 
     /**
+     * Maximum number of categories used in training for every categorical feature. If a feature has
+     * more categories than this limit, the categories with low frequencies are grouped as a single
+     * bin during training.
+     */
+    public int maxCategoriesNum;
+
+    /**
      * Minimum number of instances each node must have. If a split causes the left or right child to
      * have fewer instances than minInstancesPerNode, the split is invalid.
      */
@@ -100,6 +107,15 @@ public class BoostingStrategy implements Serializable {
 
     /** The type of loss used in boosting. */
     public LossType lossType;
+
+    /**
+     * The initial prediction score. It is the probability of belonging to the positive label for
+     * classification tasks, and the prediction value for regression tasks.
+     */
+    public Double baseScore;
+
+    /** Number of threads used in parallelized computation. */
+    public int numThreads;
 
     // Derived parameters.
     /** Maximum number leaves. */

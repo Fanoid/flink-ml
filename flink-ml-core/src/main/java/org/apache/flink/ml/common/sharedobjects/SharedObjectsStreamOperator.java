@@ -16,17 +16,17 @@
  * limitations under the License.
  */
 
-package org.apache.flink.ml.common.sharedstorage;
+package org.apache.flink.ml.common.sharedobjects;
 
-/** Interface for all operators that need to access the shared storage. */
-public interface SharedStorageStreamOperator {
+/** Interface for all operators that need to access the shared objects. */
+public interface SharedObjectsStreamOperator {
 
     /**
-     * Set the shared storage context in runtime.
+     * Set the shared objects context in runtime.
      *
-     * @param context The shared storage context.
+     * @param context The context for shared objects.
      */
-    void onSharedStorageContextSet(SharedStorageContext context);
+    void onSharedObjectsContextSet(SharedObjectsContext context);
 
     /**
      * Get a unique ID to represent the operator instance. The ID must be kept unchanged through its
@@ -34,5 +34,5 @@ public interface SharedStorageStreamOperator {
      *
      * @return A unique ID.
      */
-    String getSharedStorageAccessorID();
+    String getSharedObjectsAccessorID();
 }

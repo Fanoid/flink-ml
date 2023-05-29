@@ -22,6 +22,7 @@ import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.tuple.Tuple3;
+import org.apache.flink.api.java.tuple.Tuple5;
 import org.apache.flink.iteration.DataStreamList;
 import org.apache.flink.iteration.IterationBody;
 import org.apache.flink.iteration.IterationBodyResult;
@@ -31,14 +32,18 @@ import org.apache.flink.ml.common.gbt.defs.Split;
 import org.apache.flink.ml.common.gbt.defs.TrainContext;
 import org.apache.flink.ml.common.gbt.operators.CacheDataCalcLocalHistsOperator;
 import org.apache.flink.ml.common.gbt.operators.CalcLocalSplitsOperator;
+import org.apache.flink.ml.common.gbt.operators.GetLabelPredOperator;
 import org.apache.flink.ml.common.gbt.operators.PostSplitsOperator;
+import org.apache.flink.ml.common.gbt.operators.PrintEvalResultsOperator;
 import org.apache.flink.ml.common.gbt.operators.ReduceHistogramFunction;
 import org.apache.flink.ml.common.gbt.operators.ReduceSplitsOperator;
-import org.apache.flink.ml.common.gbt.operators.SharedStorageConstants;
+import org.apache.flink.ml.common.gbt.operators.SharedObjectsConstants;
 import org.apache.flink.ml.common.gbt.operators.TerminationOperator;
-import org.apache.flink.ml.common.sharedstorage.ItemDescriptor;
-import org.apache.flink.ml.common.sharedstorage.SharedStorageBody;
-import org.apache.flink.ml.common.sharedstorage.SharedStorageUtils;
+import org.apache.flink.ml.common.sharedobjects.ItemDescriptor;
+import org.apache.flink.ml.common.sharedobjects.SharedObjectsBody;
+import org.apache.flink.ml.common.sharedobjects.SharedObjectsStreamOperator;
+import org.apache.flink.ml.common.sharedobjects.SharedObjectsUtils;
+import org.apache.flink.ml.evaluation.binaryclassification.EvalIterationUtils;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.types.Row;
@@ -60,26 +65,31 @@ class BoostIterationBody implements IterationBody {
         this.strategy = strategy;
     }
 
-    private SharedStorageBody.SharedStorageBodyResult sharedStorageBody(
+    private SharedObjectsBody.SharedObjectsBodyResult sharedObjectsBody(
             List<DataStream<?>> inputs) {
         //noinspection unchecked
         DataStream<Row> data = (DataStream<Row>) inputs.get(0);
         //noinspection unchecked
         DataStream<TrainContext> trainContext = (DataStream<TrainContext>) inputs.get(1);
 
-        Map<ItemDescriptor<?>, String> ownerMap = new HashMap<>();
+        Map<ItemDescriptor<?>, SharedObjectsStreamOperator> ownerMap = new HashMap<>();
 
         CacheDataCalcLocalHistsOperator cacheDataCalcLocalHistsOp =
                 new CacheDataCalcLocalHistsOperator(strategy);
-        SingleOutputStreamOperator<Tuple3<Integer, Integer, Histogram>> localHists =
-                data.connect(trainContext)
-                        .transform(
-                                "CacheDataCalcLocalHists",
-                                Types.TUPLE(
-                                        Types.INT, Types.INT, TypeInformation.of(Histogram.class)),
-                                cacheDataCalcLocalHistsOp);
-        for (ItemDescriptor<?> s : SharedStorageConstants.OWNED_BY_CACHE_DATA_CALC_LOCAL_HISTS_OP) {
-            ownerMap.put(s, cacheDataCalcLocalHistsOp.getSharedStorageAccessorID());
+        SingleOutputStreamOperator<Tuple5<Integer, Integer, Integer, Integer, Histogram>>
+                localHists =
+                        data.connect(trainContext)
+                                .transform(
+                                        "CacheDataCalcLocalHists",
+                                        Types.TUPLE(
+                                                Types.INT,
+                                                Types.INT,
+                                                Types.INT,
+                                                Types.INT,
+                                                TypeInformation.of(Histogram.class)),
+                                        cacheDataCalcLocalHistsOp);
+        for (ItemDescriptor<?> s : SharedObjectsConstants.OWNED_BY_CACHE_DATA_CALC_LOCAL_HISTS_OP) {
+            ownerMap.put(s, cacheDataCalcLocalHistsOp);
         }
 
         DataStream<Tuple2<Integer, Histogram>> globalHists =
@@ -104,9 +114,29 @@ class BoostIterationBody implements IterationBody {
                 globalSplits
                         .broadcast()
                         .transform("PostSplits", TypeInformation.of(Integer.class), postSplitsOp);
-        for (ItemDescriptor<?> descriptor : SharedStorageConstants.OWNED_BY_POST_SPLITS_OP) {
-            ownerMap.put(descriptor, postSplitsOp.getSharedStorageAccessorID());
+        for (ItemDescriptor<?> descriptor : SharedObjectsConstants.OWNED_BY_POST_SPLITS_OP) {
+            ownerMap.put(descriptor, postSplitsOp);
         }
+
+        // Evaluation with training data
+        final String labelCol = "label";
+        final String probCol = "prob";
+        GetLabelPredOperator getLabelPredOp = new GetLabelPredOperator(labelCol, probCol, 10);
+        DataStream<Row> trainLabelPred =
+                updatedModelData.transform(
+                        "GetTrainLabelPred",
+                        Types.ROW_NAMED(
+                                new String[] {labelCol, probCol}, Types.DOUBLE, Types.DOUBLE),
+                        getLabelPredOp);
+        DataStream<Row> trainEvalResults =
+                EvalIterationUtils.eval(trainLabelPred, labelCol, probCol, null);
+        trainEvalResults =
+                trainEvalResults
+                        .broadcast()
+                        .transform(
+                                "PrintTrainEvalResults",
+                                trainEvalResults.getType(),
+                                new PrintEvalResultsOperator());
 
         final OutputTag<GBTModelData> finalModelDataOutputTag =
                 new OutputTag<>("model_data", TypeInformation.of(GBTModelData.class));
@@ -118,29 +148,41 @@ class BoostIterationBody implements IterationBody {
         DataStream<GBTModelData> finalModelData =
                 termination.getSideOutput(finalModelDataOutputTag);
 
-        return new SharedStorageBody.SharedStorageBodyResult(
-                Arrays.asList(updatedModelData, finalModelData, termination),
-                Arrays.asList(localHists, localSplits, globalSplits, updatedModelData, termination),
+        return new SharedObjectsBody.SharedObjectsBodyResult(
+                Arrays.asList(updatedModelData, finalModelData, termination, trainEvalResults),
+                Arrays.asList(
+                        localHists.getTransformation(),
+                        localSplits.getTransformation(),
+                        globalSplits.getTransformation(),
+                        updatedModelData.getTransformation(),
+                        termination.getTransformation(),
+                        trainEvalResults.getTransformation()),
                 ownerMap);
     }
 
     @Override
     public IterationBodyResult process(DataStreamList variableStreams, DataStreamList dataStreams) {
         DataStream<Row> data = dataStreams.get(0);
-        DataStream<TrainContext> trainContext = variableStreams.get(0);
+        DataStream<TrainContext> trainContext =
+                variableStreams.<TrainContext>get(0).union(variableStreams.get(1));
 
         List<DataStream<?>> outputs =
-                SharedStorageUtils.withSharedStorage(
-                        Arrays.asList(data, trainContext), this::sharedStorageBody);
+                SharedObjectsUtils.withSharedObjects(
+                        Arrays.asList(data, trainContext), this::sharedObjectsBody);
 
         DataStream<?> updatedModelData = outputs.get(0);
         DataStream<?> finalModelData = outputs.get(1);
         DataStream<?> termination = outputs.get(2);
+        DataStream<?> trainEvalResults = outputs.get(3);
+
         return new IterationBodyResult(
                 DataStreamList.of(
                         updatedModelData.flatMap(
+                                (d, out) -> {}, TypeInformation.of(TrainContext.class)),
+                        // add a feedback stream so that the epoch watermark is synchronized.
+                        trainEvalResults.flatMap(
                                 (d, out) -> {}, TypeInformation.of(TrainContext.class))),
-                DataStreamList.of(finalModelData),
+                DataStreamList.of(finalModelData, trainEvalResults),
                 termination);
     }
 }

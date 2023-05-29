@@ -18,7 +18,6 @@
 
 package org.apache.flink.ml.common.gbt.defs;
 
-import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.ml.common.lossfunc.LossFunc;
 
 import java.io.Serializable;
@@ -62,12 +61,12 @@ public class TrainContext implements Serializable {
     /** Number of bins for every feature. */
     public int[] numFeatureBins;
 
-    /** Sum and count of labels of all samples. */
-    public Tuple2<Double, Long> labelSumCount;
-
     /** The prior value for prediction. */
     public double prior;
 
     /** The loss function. */
     public LossFunc loss;
+
+    /** Whether to treat unseens values as missing values or 0s. */
+    public boolean isUnseenMissing;
 }

@@ -154,6 +154,7 @@ public class GBTRegressorTest extends AbstractTestBase {
         Assert.assertEquals(.01, gbtr.getValidationTol(), 1e-12);
         Assert.assertEquals(0., gbtr.getRegLambda(), 1e-12);
         Assert.assertEquals(1., gbtr.getRegGamma(), 1e-12);
+        Assert.assertEquals(Integer.MAX_VALUE, gbtr.getMaxCategoriesNum());
 
         Assert.assertEquals("squared", gbtr.getLossType());
 
@@ -176,7 +177,8 @@ public class GBTRegressorTest extends AbstractTestBase {
                 .setValidationIndicatorCol("val")
                 .setValidationTol(.1)
                 .setRegLambda(.1)
-                .setRegGamma(.1);
+                .setRegGamma(.1)
+                .setMaxCategoriesNum(16);
 
         Assert.assertArrayEquals(new String[] {"f0", "f1", "f2"}, gbtr.getFeaturesCols());
         Assert.assertEquals("label", gbtr.getLabelCol());
@@ -199,6 +201,7 @@ public class GBTRegressorTest extends AbstractTestBase {
         Assert.assertEquals(.1, gbtr.getValidationTol(), 1e-12);
         Assert.assertEquals(.1, gbtr.getRegLambda(), 1e-12);
         Assert.assertEquals(.1, gbtr.getRegGamma(), 1e-12);
+        Assert.assertEquals(16, gbtr.getMaxCategoriesNum());
     }
 
     @Test

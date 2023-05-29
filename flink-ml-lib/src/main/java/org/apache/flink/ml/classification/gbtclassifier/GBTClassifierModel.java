@@ -113,6 +113,11 @@ public class GBTClassifierModel extends BaseGBTModel<GBTClassifierModel>
                                 getRuntimeContext().getBroadcastVariable(broadcastModelKey).get(0);
                 if (null == featuresCols || 0 == featuresCols.length) {
                     featuresCols = modelData.featureNames.toArray(new String[0]);
+                    if (modelData.isInputVector) {
+                        String originalVectorCol =
+                                featuresCols[0].substring(1, featuresCols[0].lastIndexOf("_f"));
+                        featuresCols = new String[] {originalVectorCol};
+                    }
                 }
             }
             IntDoubleHashMap features = modelData.rowToFeatures(value, featuresCols);

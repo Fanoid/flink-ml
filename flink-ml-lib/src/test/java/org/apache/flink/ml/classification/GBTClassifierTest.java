@@ -187,6 +187,7 @@ public class GBTClassifierTest extends AbstractTestBase {
         Assert.assertEquals(.01, gbtc.getValidationTol(), 1e-12);
         Assert.assertEquals(0., gbtc.getRegLambda(), 1e-12);
         Assert.assertEquals(1., gbtc.getRegGamma(), 1e-12);
+        Assert.assertEquals(Integer.MAX_VALUE, gbtc.getMaxCategoriesNum());
 
         Assert.assertEquals("logistic", gbtc.getLossType());
         Assert.assertEquals("rawPrediction", gbtc.getRawPredictionCol());
@@ -212,6 +213,7 @@ public class GBTClassifierTest extends AbstractTestBase {
                 .setValidationTol(.1)
                 .setRegLambda(.1)
                 .setRegGamma(.1)
+                .setMaxCategoriesNum(16)
                 .setRawPredictionCol("raw_pred")
                 .setProbabilityCol("prob");
 
@@ -236,6 +238,7 @@ public class GBTClassifierTest extends AbstractTestBase {
         Assert.assertEquals(.1, gbtc.getValidationTol(), 1e-12);
         Assert.assertEquals(.1, gbtc.getRegLambda(), 1e-12);
         Assert.assertEquals(.1, gbtc.getRegGamma(), 1e-12);
+        Assert.assertEquals(16, gbtc.getMaxCategoriesNum());
 
         Assert.assertEquals("raw_pred", gbtc.getRawPredictionCol());
         Assert.assertEquals("prob", gbtc.getProbabilityCol());
@@ -511,6 +514,26 @@ public class GBTClassifierTest extends AbstractTestBase {
         ParamUtils.updateExistingParams(modelB, modelA.getParamMap());
         Table output =
                 modelA.transform(inputTable)[0].select(
+                        $(gbtc.getPredictionCol()),
+                        $(gbtc.getRawPredictionCol()),
+                        $(gbtc.getProbabilityCol()));
+        verifyPredictionResult(output, outputRows);
+    }
+
+    @Test
+    public void testFitAndPredictWithMT() throws Exception {
+        GBTClassifier gbtc =
+                new GBTClassifier()
+                        .setFeaturesCols("f0", "f1", "f2")
+                        .setCategoricalCols("f2")
+                        .setLabelCol("cls_label")
+                        .setRegGamma(0.)
+                        .setMaxBins(3)
+                        .setNumThreads(4)
+                        .setSeed(123);
+        GBTClassifierModel model = gbtc.fit(inputTable);
+        Table output =
+                model.transform(inputTable)[0].select(
                         $(gbtc.getPredictionCol()),
                         $(gbtc.getRawPredictionCol()),
                         $(gbtc.getProbabilityCol()));

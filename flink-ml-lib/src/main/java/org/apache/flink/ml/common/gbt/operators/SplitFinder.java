@@ -45,14 +45,18 @@ class SplitFinder {
                             ? new CategoricalFeatureSplitter(
                                     i, featureMetas[i], trainContext.strategy)
                             : new ContinuousFeatureSplitter(
-                                    i, featureMetas[i], trainContext.strategy);
+                                    i,
+                                    featureMetas[i],
+                                    trainContext.strategy,
+                                    trainContext.isUnseenMissing);
         }
         // Adds an addition splitter to obtain the prediction of the node.
         splitters[numFeatures] =
                 new ContinuousFeatureSplitter(
                         numFeatures,
                         new FeatureMeta.ContinuousFeatureMeta("SPECIAL", 0, new double[0]),
-                        trainContext.strategy);
+                        trainContext.strategy,
+                        trainContext.isUnseenMissing);
         maxDepth = trainContext.strategy.maxDepth;
         maxNumLeaves = trainContext.strategy.maxNumLeaves;
     }

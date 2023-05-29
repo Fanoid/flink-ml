@@ -16,11 +16,12 @@
  * limitations under the License.
  */
 
-package org.apache.flink.ml.common.sharedstorage;
+package org.apache.flink.ml.common.sharedobjects;
 
 import org.apache.flink.runtime.state.StateInitializationContext;
 import org.apache.flink.runtime.state.StateSnapshotContext;
 import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
+import org.apache.flink.streaming.api.operators.StreamOperator;
 import org.apache.flink.streaming.api.operators.StreamingRuntimeContext;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.function.BiConsumerWithException;
@@ -29,19 +30,25 @@ import java.io.Serializable;
 import java.util.HashMap;
 import java.util.Map;
 
-/** Default implementation of {@link SharedStorageContext} using {@link SharedStorage}. */
+/**
+ * Default implementation of {@link SharedObjectsContext}.
+ *
+ * <p>It initializes readers and writers according to the owner map when the subtask starts and
+ * clean internal states when the subtask finishes. It also handles `initializeState` and
+ * `snapshotState` automatically.
+ */
 @SuppressWarnings("rawtypes")
-class SharedStorageContextImpl implements SharedStorageContext, Serializable {
-    private final StorageID storageID;
-    private final Map<ItemDescriptor, SharedStorage.Writer> writers = new HashMap<>();
-    private final Map<ItemDescriptor, SharedStorage.Reader> readers = new HashMap<>();
+class SharedObjectsContextImpl implements SharedObjectsContext, Serializable {
+    private final PoolID poolID;
+    private final Map<ItemDescriptor, SharedObjectsPools.Writer> writers = new HashMap<>();
+    private final Map<ItemDescriptor, SharedObjectsPools.Reader> readers = new HashMap<>();
     private Map<ItemDescriptor<?>, String> ownerMap;
 
-    public SharedStorageContextImpl() {
-        this.storageID = new StorageID();
+    public SharedObjectsContextImpl() {
+        this.poolID = new PoolID();
     }
 
-    public void setOwnerMap(Map<ItemDescriptor<?>, String> ownerMap) {
+    void setOwnerMap(Map<ItemDescriptor<?>, String> ownerMap) {
         this.ownerMap = ownerMap;
     }
 
@@ -53,7 +60,7 @@ class SharedStorageContextImpl implements SharedStorageContext, Serializable {
 
     private <T> T getSharedItem(ItemDescriptor<T> key) {
         //noinspection unchecked
-        SharedStorage.Reader<T> reader = readers.get(key);
+        SharedObjectsPools.Reader<T> reader = readers.get(key);
         Preconditions.checkState(
                 null != reader,
                 String.format(
@@ -64,7 +71,7 @@ class SharedStorageContextImpl implements SharedStorageContext, Serializable {
 
     private <T> void setSharedItem(ItemDescriptor<T> key, T value) {
         //noinspection unchecked
-        SharedStorage.Writer<T> writer = writers.get(key);
+        SharedObjectsPools.Writer<T> writer = writers.get(key);
         Preconditions.checkState(
                 null != writer,
                 String.format(
@@ -73,43 +80,46 @@ class SharedStorageContextImpl implements SharedStorageContext, Serializable {
         writer.set(value);
     }
 
-    @Override
-    public <T extends AbstractStreamOperator<?> & SharedStorageStreamOperator> void initializeState(
-            T operator,
+    void initializeState(
+            StreamOperator<?> operator,
             StreamingRuntimeContext runtimeContext,
             StateInitializationContext context) {
-        String ownerId = operator.getSharedStorageAccessorID();
+        Preconditions.checkArgument(
+                operator instanceof SharedObjectsStreamOperator
+                        && operator instanceof AbstractStreamOperator);
+        String ownerId = ((SharedObjectsStreamOperator) operator).getSharedObjectsAccessorID();
         int subtaskId = runtimeContext.getIndexOfThisSubtask();
         for (Map.Entry<ItemDescriptor<?>, String> entry : ownerMap.entrySet()) {
-            ItemDescriptor descriptor = entry.getKey();
+            ItemDescriptor<?> descriptor = entry.getKey();
             if (ownerId.equals(entry.getValue())) {
                 writers.put(
                         descriptor,
-                        SharedStorage.getWriter(
-                                storageID,
+                        SharedObjectsPools.getWriter(
+                                poolID,
                                 subtaskId,
                                 descriptor,
                                 ownerId,
                                 operator.getOperatorID(),
-                                operator.getContainingTask(),
+                                ((AbstractStreamOperator<?>) operator).getContainingTask(),
                                 runtimeContext,
                                 context));
             }
-            readers.put(descriptor, SharedStorage.getReader(storageID, subtaskId, descriptor));
+            readers.put(descriptor, SharedObjectsPools.getReader(poolID, subtaskId, descriptor));
         }
     }
 
-    @Override
-    public void snapshotState(StateSnapshotContext context) throws Exception {
-        for (SharedStorage.Writer<?> writer : writers.values()) {
+    void snapshotState(StateSnapshotContext context) throws Exception {
+        for (SharedObjectsPools.Writer<?> writer : writers.values()) {
             writer.snapshotState(context);
         }
     }
 
-    @Override
-    public void clear() {
-        for (SharedStorage.Writer writer : writers.values()) {
+    void clear() {
+        for (SharedObjectsPools.Writer writer : writers.values()) {
             writer.remove();
+        }
+        for (SharedObjectsPools.Reader reader : readers.values()) {
+            reader.remove();
         }
         writers.clear();
         readers.clear();

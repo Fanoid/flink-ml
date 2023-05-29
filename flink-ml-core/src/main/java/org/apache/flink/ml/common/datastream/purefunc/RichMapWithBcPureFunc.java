@@ -16,17 +16,21 @@
  * limitations under the License.
  */
 
-package org.apache.flink.ml.common.sharedstorage;
+package org.apache.flink.ml.common.datastream.purefunc;
 
-import org.apache.flink.util.AbstractID;
+import org.apache.flink.annotation.Experimental;
+import org.apache.flink.api.common.functions.RichMapFunction;
+import org.apache.flink.api.common.functions.RuntimeContext;
 
-/** ID of a shared storage. */
-class StorageID extends AbstractID {
-    private static final long serialVersionUID = 1L;
-
-    public StorageID(byte[] bytes) {
-        super(bytes);
-    }
-
-    public StorageID() {}
-}
+/**
+ * Similar to {@link RichMapFunction} but with an addition broadcast parameter. Compared to {@link
+ * RichMapFunction} with {@link RuntimeContext#getBroadcastVariable}, this interface can be used in
+ * a broader situations since it involves no Flink runtime.
+ *
+ * @param <IN> Type of input elements.
+ * @param <OUT> Type of output elements.
+ * @param <BC> Type of broadcast element.
+ */
+@Experimental
+public abstract class RichMapWithBcPureFunc<IN, OUT, BC> extends AbstractRichFunc
+        implements MapWithBcPureFunc<IN, OUT, BC> {}
