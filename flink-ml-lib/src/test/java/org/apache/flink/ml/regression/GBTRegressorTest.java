@@ -29,7 +29,7 @@ import org.apache.flink.ml.linalg.Vectors;
 import org.apache.flink.ml.linalg.typeinfo.VectorTypeInfo;
 import org.apache.flink.ml.regression.gbtregressor.GBTRegressor;
 import org.apache.flink.ml.regression.gbtregressor.GBTRegressorModel;
-import org.apache.flink.ml.util.ReadWriteUtils;
+import org.apache.flink.ml.util.ParamUtils;
 import org.apache.flink.ml.util.TestUtils;
 import org.apache.flink.streaming.api.environment.ExecutionCheckpointingOptions;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
@@ -295,7 +295,8 @@ public class GBTRegressorTest extends AbstractTestBase {
                         .setMaxBins(3)
                         .setSeed(123);
         GBTRegressor loadedgbtr =
-                TestUtils.saveAndReload(tEnv, gbtr, tempFolder.newFolder().getAbsolutePath());
+                TestUtils.saveAndReload(
+                        tEnv, gbtr, tempFolder.newFolder().getAbsolutePath(), GBTRegressor::load);
         GBTRegressorModel model = loadedgbtr.fit(inputTable);
         Assert.assertEquals(
                 Collections.singletonList("modelData"),
@@ -319,7 +320,11 @@ public class GBTRegressorTest extends AbstractTestBase {
                         .setSeed(123);
         GBTRegressorModel model = gbtr.fit(inputTable);
         GBTRegressorModel loadedModel =
-                TestUtils.saveAndReload(tEnv, model, tempFolder.newFolder().getAbsolutePath());
+                TestUtils.saveAndReload(
+                        tEnv,
+                        model,
+                        tempFolder.newFolder().getAbsolutePath(),
+                        GBTRegressorModel::load);
         Table output = loadedModel.transform(inputTable)[0].select($(gbtr.getPredictionCol()));
         verifyPredictionResult(output, outputRows);
     }
@@ -384,7 +389,7 @@ public class GBTRegressorTest extends AbstractTestBase {
                         .setSeed(123);
         GBTRegressorModel modelA = gbtr.fit(inputTable);
         GBTRegressorModel modelB = new GBTRegressorModel().setModelData(modelA.getModelData());
-        ReadWriteUtils.updateExistingParams(modelB, modelA.getParamMap());
+        ParamUtils.updateExistingParams(modelB, modelA.getParamMap());
         Table output = modelA.transform(inputTable)[0].select($(gbtr.getPredictionCol()));
         verifyPredictionResult(output, outputRows);
     }
