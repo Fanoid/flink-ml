@@ -27,6 +27,8 @@ import org.apache.flink.ml.common.computation.purefunc.MapPartitionPureFunc;
 import org.apache.flink.ml.common.computation.purefunc.MapPartitionWithDataPureFunc;
 import org.apache.flink.ml.common.computation.purefunc.MapPureFunc;
 import org.apache.flink.ml.common.computation.purefunc.MapWithDataPureFunc;
+import org.apache.flink.ml.common.computation.purefunc.OneInputPureFunc;
+import org.apache.flink.ml.common.computation.purefunc.TwoInputPureFunc;
 import org.apache.flink.util.Preconditions;
 
 import java.util.Arrays;
@@ -39,6 +41,7 @@ import java.util.List;
  * @param <T> The type of record.
  */
 public class Data<T> {
+
     public final TypeInformation<T> type;
 
     public Data(TypeInformation<T> type) {
@@ -83,73 +86,81 @@ public class Data<T> {
         return new RandomReadWriteData<>(this);
     }
 
-    public <R> Data<R> map(MapPartitionPureFunc<T, R> mapper, TypeInformation<R> outType) {
-        return transform(
-                        "Map",
-                        new PureFuncComputation(mapper),
-                        Collections.singletonList(outType),
-                        this)
-                .get(0);
-    }
-
     public <R> Data<R> map(MapPureFunc<T, R> mapper, TypeInformation<R> outType) {
-        return transform(
-                        "Map",
-                        new PureFuncComputation(mapper),
-                        Collections.singletonList(outType),
-                        this)
-                .get(0);
-    }
-
-    public <R> Data<R> map(IterativeMapPureFunc<T, R> mapper, TypeInformation<R> outType) {
-        return transform(
-                        "IterativeMap",
-                        new PureFuncComputation(mapper),
-                        Collections.singletonList(outType),
-                        this)
-                .get(0);
-    }
-
-    public <R, DATA> Data<R> mapWithData(
-            MapPartitionWithDataPureFunc<T, DATA, R> mapper,
-            Data<DATA> data,
-            TypeInformation<R> outType) {
-        return transform(
-                        "MapWithData",
-                        new PureFuncComputation(mapper),
-                        Collections.singletonList(outType),
-                        this,
-                        data)
-                .get(0);
-    }
-
-    public <R, DATA> Data<R> mapWithData(
-            MapWithDataPureFunc<T, DATA, R> mapper, Data<DATA> data, TypeInformation<R> outType) {
-        return transform(
-                        "MapWithData",
-                        new PureFuncComputation(mapper),
-                        Collections.singletonList(outType),
-                        this,
-                        data)
-                .get(0);
-    }
-
-    public <R> Data<R> map(
-            String name, MapPartitionPureFunc<T, R> mapper, TypeInformation<R> outType) {
-        return transform(
-                        name,
-                        new PureFuncComputation(mapper),
-                        Collections.singletonList(outType),
-                        this)
-                .get(0);
+        return map(mapper.getClass().getSimpleName(), mapper, outType);
     }
 
     public <R> Data<R> map(String name, MapPureFunc<T, R> mapper, TypeInformation<R> outType) {
+        return transformOneInputPureFunc(name, mapper, outType);
+    }
+
+    public <R> Data<R> map(IterativeMapPureFunc<T, R> mapper, TypeInformation<R> outType) {
+        return map(mapper.getClass().getSimpleName(), mapper, outType);
+    }
+
+    public <R> Data<R> map(
+            String name, IterativeMapPureFunc<T, R> mapper, TypeInformation<R> outType) {
+        return transformOneInputPureFunc(name, mapper, outType);
+    }
+
+    public <R, DATA> Data<R> map(
+            MapWithDataPureFunc<T, DATA, R> mapper, Data<DATA> data, TypeInformation<R> outType) {
+        return map(mapper.getClass().getSimpleName(), mapper, data, outType);
+    }
+
+    public <R, DATA> Data<R> map(
+            String name,
+            MapWithDataPureFunc<T, DATA, R> mapper,
+            Data<DATA> data,
+            TypeInformation<R> outType) {
+        return transformTwoInputPureFunc(name, mapper, outType, data);
+    }
+
+    public <R> Data<R> mapPartition(MapPartitionPureFunc<T, R> mapper, TypeInformation<R> outType) {
+        return mapPartition(mapper.getClass().getSimpleName(), mapper, outType);
+    }
+
+    public <R> Data<R> mapPartition(
+            String name, MapPartitionPureFunc<T, R> mapper, TypeInformation<R> outType) {
+        return transformOneInputPureFunc(name, mapper, outType);
+    }
+
+    public <R, DATA> Data<R> mapPartition(
+            MapPartitionWithDataPureFunc<T, DATA, R> mapper,
+            Data<DATA> data,
+            TypeInformation<R> outType) {
+        return mapPartition(mapper.getClass().getSimpleName(), mapper, data, outType);
+    }
+
+    public <R, DATA> Data<R> mapPartition(
+            String name,
+            MapPartitionWithDataPureFunc<T, DATA, R> mapper,
+            Data<DATA> data,
+            TypeInformation<R> outType) {
+        return transformTwoInputPureFunc(name, mapper, outType, data);
+    }
+
+    <R> Data<R> transformOneInputPureFunc(
+            String name, OneInputPureFunc<T, R> mapper, TypeInformation<R> outType) {
         return transform(
                         name,
                         new PureFuncComputation(mapper),
                         Collections.singletonList(outType),
                         this)
+                .get(0);
+    }
+
+    <R, DATA> Data<R> transformTwoInputPureFunc(
+            String name,
+            TwoInputPureFunc<T, DATA, R> mapper,
+            TypeInformation<R> outType,
+            Data<DATA> data) {
+        return transform(
+                        name,
+                        new PureFuncComputation(mapper),
+                        Collections.singletonList(outType),
+                        this,
+                        data)
                 .get(0);
     }
 

@@ -34,6 +34,7 @@ import org.apache.flink.util.Collector;
  */
 @Experimental
 @FunctionalInterface
-public interface IterativeMapWithDataPureFunc<IN, DATA, OUT> extends SISOPureFunc<IN, OUT> {
+public interface IterativeMapWithDataPureFunc<IN, DATA, OUT>
+        extends TwoInputPureFunc<IN, DATA, OUT> {
     void map(IN value, DATA data, int iteration, Collector<OUT> out);
 }

@@ -63,14 +63,13 @@ public class KMeans2 implements Estimator<KMeans2, KMeansModel>, KMeansParams<KM
 
         Data<VectorWithNorm> pointsWithNorm =
                 points.map(
-                        (MapPureFunc<DenseVector, VectorWithNorm>)
-                                (value, out) -> out.collect(new VectorWithNorm(value)),
+                        (value, out) -> out.collect(new VectorWithNorm(value)),
                         TypeInformation.of(VectorWithNorm.class));
 
         Data<Iterable<VectorWithNorm>> cachedPoints = pointsWithNorm.cacheWithSequentialRead();
 
         Data<Tuple2<Integer[], DenseVector[]>> centroidIdAndPoints =
-                centroids.mapWithData(
+                centroids.map(
                         new CentroidsUpdatePureFunc(distanceMeasure),
                         cachedPoints,
                         Types.TUPLE(
@@ -86,8 +85,7 @@ public class KMeans2 implements Estimator<KMeans2, KMeansModel>, KMeansParams<KM
 
         Data<DenseVector[]> newCentroids =
                 newModelData.map(
-                        (MapPureFunc<KMeansModelData, DenseVector[]>)
-                                (value, out) -> out.collect(value.centroids),
+                        (value, out) -> out.collect(value.centroids),
                         Types.OBJECT_ARRAY(DenseVectorTypeInfo.INSTANCE));
 
         Data<Boolean> endCriteria =
@@ -96,13 +94,12 @@ public class KMeans2 implements Estimator<KMeans2, KMeansModel>, KMeansParams<KM
                         Types.BOOLEAN);
 
         Data<KMeansModelData> outputModel =
-                newModelData.mapWithData(
-                        (MapWithDataPureFunc<KMeansModelData, Boolean, KMeansModelData>)
-                                (value, isFinal, out) -> {
-                                    if (isFinal) {
-                                        out.collect(value);
-                                    }
-                                },
+                newModelData.map(
+                        (value, isFinal, out) -> {
+                            if (isFinal) {
+                                out.collect(value);
+                            }
+                        },
                         endCriteria,
                         newModelData.type);
         return new IterationComputation(

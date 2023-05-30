@@ -34,7 +34,7 @@ import org.apache.flink.api.common.functions.RuntimeContext;
  */
 @Experimental
 @FunctionalInterface
-public interface MapWithBcPureFunc<IN, OUT, BC> extends SISOPureFunc<IN, OUT> {
+public interface MapWithBcPureFunc<IN, OUT, BC> extends OneInputPureFunc<IN, OUT> {
     // TODO: use List<BC> instead of BC
     OUT map(IN elem, BC bc);
 }

@@ -19,21 +19,11 @@
 package org.apache.flink.ml.common.computation.purefunc;
 
 import org.apache.flink.annotation.Experimental;
-import org.apache.flink.api.common.functions.MapFunction;
-import org.apache.flink.api.common.functions.RichMapFunction;
-import org.apache.flink.api.common.functions.RuntimeContext;
-import org.apache.flink.util.Collector;
 
 /**
- * Similar to {@link MapFunction} but with an addition broadcast parameter. Compared to {@link
- * RichMapFunction} with {@link RuntimeContext#getBroadcastVariable}, this interface can be used in
- * a broader situations since it involves no Flink runtime.
- *
- * @param <IN> Type of input elements.
- * @param <OUT> Type of output elements.
+ * The base interface for all pure user-defined functions. `pure` here means that the function is
+ * independent of the Flink runtime, making it applicable in a wider range of situations than {@link
+ * org.apache.flink.api.common.functions.Function}.
  */
 @Experimental
-@FunctionalInterface
-public interface MapPartitionPureFunc<IN, OUT> extends OneInputPureFunc<IN, OUT> {
-    void map(Iterable<IN> values, Collector<OUT> out);
-}
+public interface TwoInputPureFunc<IN1, IN2, OUT> extends PureFunc<OUT> {}

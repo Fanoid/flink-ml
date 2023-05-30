@@ -133,13 +133,13 @@ public class BinaryClassificationEvaluator2
      */
     private static Data<double[]> getBoundaryRange(Data<Tuple3<Double, Boolean, Double>> evalData) {
         Data<double[]> sampleScoreStream =
-                evalData.map(
+                evalData.mapPartition(
                         new SampleScoreFunction(),
                         PrimitiveArrayTypeInfo.DOUBLE_PRIMITIVE_ARRAY_TYPE_INFO);
 
         return sampleScoreStream
                 .all()
-                .map(
+                .mapPartition(
                         new CalcBoundaryRangeFunction(),
                         PrimitiveArrayTypeInfo.DOUBLE_PRIMITIVE_ARRAY_TYPE_INFO);
     }
@@ -153,13 +153,13 @@ public class BinaryClassificationEvaluator2
 
         Data<Row> data = new Data<>(input.getType());
         Data<Tuple3<Double, Boolean, Double>> evalData =
-                data.map(
+                data.mapPartition(
                         new ParseSample(getLabelCol(), getRawPredictionCol(), getWeightCol()),
                         Types.TUPLE(Types.DOUBLE, Types.BOOLEAN, Types.DOUBLE));
         Data<double[]> boundaryRange = getBoundaryRange(evalData);
 
         Data<Tuple4<Double, Boolean, Double, Integer>> evalDataWithTaskId =
-                evalData.mapWithData(
+                evalData.mapPartition(
                         new AppendTaskIdPureFunc(),
                         boundaryRange,
                         Types.TUPLE(Types.DOUBLE, Types.BOOLEAN, Types.DOUBLE, Types.INT));
@@ -168,7 +168,7 @@ public class BinaryClassificationEvaluator2
         evalDataWithTaskId = evalDataWithTaskId.groupByKey(x -> x.f3);
 
         Data<Tuple3<Double, Boolean, Double>> sortEvalData =
-                evalDataWithTaskId.map(
+                evalDataWithTaskId.mapPartition(
                         new MapPartitionPureFunc<
                                 Tuple4<Double, Boolean, Double, Integer>,
                                 Tuple3<Double, Boolean, Double>>() {
@@ -194,20 +194,19 @@ public class BinaryClassificationEvaluator2
                 sortEvalData.map(
                         new PartitionSummaryPureFunc(), TypeInformation.of(BinarySummary.class));
         Data<List<BinarySummary>> partitionSummariesList =
-                partitionSummaries.map(
-                        (MapPartitionPureFunc<BinarySummary, List<BinarySummary>>)
-                                (values, out) -> {
-                                    List<BinarySummary> l = new ArrayList<>();
-                                    for (BinarySummary value : values) {
-                                        l.add(value);
-                                    }
-                                    out.collect(l);
-                                },
+                partitionSummaries.mapPartition(
+                        (values, out) -> {
+                            List<BinarySummary> l = new ArrayList<>();
+                            for (BinarySummary value : values) {
+                                l.add(value);
+                            }
+                            out.collect(l);
+                        },
                         Types.LIST(partitionSummaries.type));
 
         /* Sorts global data. Output Tuple4 : <score, order, isPositive, weight>. */
         Data<Tuple4<Double, Long, Boolean, Double>> dataWithOrders =
-                sortEvalData.mapWithData(
+                sortEvalData.map(
                         new CalcSampleOrdersPureFunc(),
                         partitionSummariesList,
                         Types.TUPLE(Types.DOUBLE, Types.BOOLEAN, Types.DOUBLE, Types.INT));
@@ -220,12 +219,12 @@ public class BinaryClassificationEvaluator2
 
         Data<double[]> middleAreaUnderROC =
                 localAreaUnderROCVariable
-                        .map(new AccAucPureFunc(), localAreaUnderROCVariable.type)
+                        .mapPartition(new AccAucPureFunc(), localAreaUnderROCVariable.type)
                         .all()
-                        .map(new AccAucPureFunc(), localAreaUnderROCVariable.type);
+                        .mapPartition(new AccAucPureFunc(), localAreaUnderROCVariable.type);
 
         Data<Double> areaUnderROC =
-                middleAreaUnderROC.map(
+                middleAreaUnderROC.mapPartition(
                         new MapPartitionPureFunc<double[], Double>() {
                             @Override
                             public void map(Iterable<double[]> values, Collector<Double> out) {

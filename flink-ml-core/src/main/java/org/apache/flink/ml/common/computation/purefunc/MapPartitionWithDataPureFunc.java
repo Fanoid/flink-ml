@@ -34,6 +34,7 @@ import org.apache.flink.util.Collector;
  */
 @Experimental
 @FunctionalInterface
-public interface MapPartitionWithDataPureFunc<IN, DATA, OUT> extends SISOPureFunc<IN, OUT> {
+public interface MapPartitionWithDataPureFunc<IN, DATA, OUT>
+        extends TwoInputPureFunc<IN, DATA, OUT> {
     void map(Iterable<IN> values, DATA data, Collector<OUT> out);
 }
