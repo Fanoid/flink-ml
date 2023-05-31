@@ -51,6 +51,7 @@ import org.apache.flink.util.Collector;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedList;
 import java.util.List;
@@ -307,6 +308,11 @@ public class EvalIterationUtils {
         @Override
         public void open() {
             countValues = null;
+        }
+
+        @Override
+        public List<StateDesc<?, ?>> getStateDescs() {
+            return Collections.emptyList();
         }
 
         @Override
