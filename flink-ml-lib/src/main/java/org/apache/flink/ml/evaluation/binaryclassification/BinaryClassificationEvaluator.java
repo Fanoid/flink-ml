@@ -34,7 +34,8 @@ import org.apache.flink.api.java.typeutils.RowTypeInfo;
 import org.apache.flink.iteration.operator.OperatorStateUtils;
 import org.apache.flink.ml.api.AlgoOperator;
 import org.apache.flink.ml.common.broadcast.BroadcastUtils;
-import org.apache.flink.ml.common.computation.purefunc.MapWithBcPureFunc;
+import org.apache.flink.ml.common.computation.purefunc.ConsumerCollector;
+import org.apache.flink.ml.common.computation.purefunc.MapWithDataPureFunc;
 import org.apache.flink.ml.common.datastream.DataStreamUtils;
 import org.apache.flink.ml.linalg.Vector;
 import org.apache.flink.ml.param.Param;
@@ -532,19 +533,23 @@ public class BinaryClassificationEvaluator
     }
 
     static class AppendTaskIdPureFunc
-            implements MapWithBcPureFunc<
+            implements MapWithDataPureFunc<
                     Tuple3<Double, Boolean, Double>,
-                    Tuple4<Double, Boolean, Double, Integer>,
-                    double[]> {
+                    double[],
+                    Tuple4<Double, Boolean, Double, Integer>> {
+
         @Override
-        public Tuple4<Double, Boolean, Double, Integer> map(
-                Tuple3<Double, Boolean, Double> value, double[] boundaryRange) {
+        public void map(
+                Tuple3<Double, Boolean, Double> value,
+                double[] boundaryRange,
+                Collector<Tuple4<Double, Boolean, Double, Integer>> out) {
             for (int i = boundaryRange.length - 1; i > 0; --i) {
                 if (value.f0 > boundaryRange[i]) {
-                    return Tuple4.of(value.f0, value.f1, value.f2, i);
+                    out.collect(Tuple4.of(value.f0, value.f1, value.f2, i));
+                    return;
                 }
             }
-            return Tuple4.of(value.f0, value.f1, value.f2, 0);
+            out.collect(Tuple4.of(value.f0, value.f1, value.f2, 0));
         }
     }
 
@@ -559,6 +564,8 @@ public class BinaryClassificationEvaluator
         private final String boundaryRangeKey;
         private double[] boundaryRange;
         private transient AppendTaskIdPureFunc func;
+        private Tuple4<Double, Boolean, Double, Integer> outValue;
+        private ConsumerCollector<Tuple4<Double, Boolean, Double, Integer>> collector;
 
         public AppendTaskId(String boundaryRangeKey) {
             this.boundaryRangeKey = boundaryRangeKey;
@@ -572,8 +579,10 @@ public class BinaryClassificationEvaluator
                         (double[])
                                 getRuntimeContext().getBroadcastVariable(boundaryRangeKey).get(0);
                 func = new AppendTaskIdPureFunc();
+                collector = new ConsumerCollector<>((v) -> outValue = v);
             }
-            return func.map(value, boundaryRange);
+            func.map(value, boundaryRange, collector);
+            return outValue;
         }
     }
 

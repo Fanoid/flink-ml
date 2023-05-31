@@ -18,22 +18,21 @@
 
 package org.apache.flink.ml.common.computation.purefunc;
 
-import org.apache.flink.annotation.Experimental;
-import org.apache.flink.api.common.functions.MapFunction;
-import org.apache.flink.api.common.functions.RichMapFunction;
-import org.apache.flink.api.common.functions.RuntimeContext;
 import org.apache.flink.util.Collector;
 
-/**
- * Similar to {@link MapFunction} but with an addition broadcast parameter. Compared to {@link
- * RichMapFunction} with {@link RuntimeContext#getBroadcastVariable}, this interface can be used in
- * a broader situations since it involves no Flink runtime.
- *
- * @param <IN> Type of input elements.
- * @param <OUT> Type of output elements.
- */
-@Experimental
-@FunctionalInterface
-public interface IterativeMapPureFunc<IN, OUT> extends OneInputPureFunc<IN, OUT> {
-    void map(IN value, int iteration, Collector<OUT> out) throws Exception;
+public class ConsumerCollector<T> implements Collector<T> {
+
+    private final SerializedConsumer<T> consumer;
+
+    public ConsumerCollector(SerializedConsumer<T> consumer) {
+        this.consumer = consumer;
+    }
+
+    @Override
+    public void collect(T record) {
+        consumer.accept(record);
+    }
+
+    @Override
+    public void close() {}
 }

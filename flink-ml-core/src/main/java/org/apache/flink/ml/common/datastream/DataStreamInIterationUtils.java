@@ -29,7 +29,8 @@ import org.apache.flink.api.java.typeutils.TypeExtractor;
 import org.apache.flink.iteration.IterationListener;
 import org.apache.flink.iteration.datacache.nonkeyed.ListStateWithCache;
 import org.apache.flink.iteration.operator.OperatorStateUtils;
-import org.apache.flink.ml.common.computation.purefunc.MapWithBcPureFunc;
+import org.apache.flink.ml.common.computation.purefunc.ConsumerCollector;
+import org.apache.flink.ml.common.computation.purefunc.MapWithDataPureFunc;
 import org.apache.flink.ml.common.computation.purefunc.PureFuncContextImpl;
 import org.apache.flink.ml.common.computation.purefunc.RichPureFunc;
 import org.apache.flink.runtime.state.StateInitializationContext;
@@ -63,17 +64,17 @@ public class DataStreamInIterationUtils {
                 .setParallelism(input.getParallelism());
     }
 
-    public static <IN, OUT, BC> DataStream<OUT> mapWithBc(
+    public static <IN, OUT, DATA> DataStream<OUT> mapWithData(
             DataStream<IN> input,
-            DataStream<BC> broadcast,
-            MapWithBcPureFunc<IN, OUT, BC> func,
+            DataStream<DATA> broadcast,
+            MapWithDataPureFunc<IN, DATA, OUT> func,
             TypeSerializer<IN> inTypeSerializer,
             TypeInformation<OUT> outType) {
         return input.connect(broadcast.broadcast())
                 .transform(
                         "mapWithBroadcastInIteration",
                         outType,
-                        new MapWithBcOperator<>(inTypeSerializer, func));
+                        new MapWithDataOperator<>(inTypeSerializer, func));
     }
 
     public static <T> DataStream<T> reduce(DataStream<T> input, ReduceFunction<T> func) {
@@ -151,15 +152,18 @@ public class DataStreamInIterationUtils {
         public void onIterationTerminated(Context context, Collector<OUT> collector) {}
     }
 
-    static class MapWithBcOperator<IN, OUT, BC> extends AbstractStreamOperator<OUT>
-            implements TwoInputStreamOperator<IN, BC, OUT>, IterationListener<OUT> {
+    static class MapWithDataOperator<IN, OUT, DATA> extends AbstractStreamOperator<OUT>
+            implements TwoInputStreamOperator<IN, DATA, OUT>, IterationListener<OUT> {
         private final TypeSerializer<IN> inTypeSerializer;
-        private final MapWithBcPureFunc<IN, OUT, BC> func;
-        private BC bc;
+        private final MapWithDataPureFunc<IN, DATA, OUT> func;
+        private DATA bc;
         private ListStateWithCache<IN> cachedIn;
 
-        MapWithBcOperator(
-                TypeSerializer<IN> inTypeSerializer, MapWithBcPureFunc<IN, OUT, BC> func) {
+        private OUT outValue;
+        private ConsumerCollector<OUT> fnCollector;
+
+        MapWithDataOperator(
+                TypeSerializer<IN> inTypeSerializer, MapWithDataPureFunc<IN, DATA, OUT> func) {
             this.inTypeSerializer = inTypeSerializer;
             this.func = func;
         }
@@ -168,23 +172,17 @@ public class DataStreamInIterationUtils {
         public void open() throws Exception {
             super.open();
             if (func instanceof RichPureFunc) {
-                // TODO: fixit.
-                ((RichPureFunc) func)
+                //noinspection unchecked
+                ((RichPureFunc<OUT>) func)
                         .setContext(
                                 new PureFuncContextImpl(
                                         getRuntimeContext().getNumberOfParallelSubtasks(),
                                         getRuntimeContext().getIndexOfThisSubtask(),
                                         1));
-                ((RichPureFunc) func).open();
+                //noinspection unchecked
+                ((RichPureFunc<OUT>) func).open();
             }
-        }
-
-        @Override
-        public void close() throws Exception {
-            if (func instanceof RichPureFunc) {
-                ((RichPureFunc) func).close();
-            }
-            super.close();
+            fnCollector = new ConsumerCollector<>((v) -> outValue = v);
         }
 
         @Override
@@ -210,19 +208,28 @@ public class DataStreamInIterationUtils {
                 int epochWatermark, Context context, Collector<OUT> collector) throws Exception {
             Preconditions.checkNotNull(bc);
             for (IN value : cachedIn.get()) {
-                OUT out = func.map(value, bc);
-                collector.collect(out);
+                func.map(value, bc, fnCollector);
+                collector.collect(outValue);
             }
             if (func instanceof RichPureFunc) {
-                ((RichPureFunc) func).close();
-                ((RichPureFunc) func).open();
+                //noinspection unchecked
+                ((RichPureFunc<OUT>) func).close(collector);
+                //noinspection unchecked
+                ((RichPureFunc<OUT>) func).open();
             }
             bc = null;
             cachedIn.clear();
         }
 
         @Override
-        public void onIterationTerminated(Context context, Collector<OUT> collector) {}
+        public void onIterationTerminated(Context context, Collector<OUT> collector)
+                throws Exception {
+            if (func instanceof RichPureFunc) {
+                //noinspection unchecked
+                ((RichPureFunc<OUT>) func).close(fnCollector);
+                collector.collect(outValue);
+            }
+        }
 
         @Override
         public void processElement1(StreamRecord<IN> element) throws Exception {
@@ -231,16 +238,16 @@ public class DataStreamInIterationUtils {
                 return;
             }
             for (IN value : cachedIn.get()) {
-                OUT out = func.map(value, bc);
-                output.collect(new StreamRecord<>(out));
+                func.map(value, bc, fnCollector);
+                output.collect(new StreamRecord<>(outValue));
             }
             cachedIn.clear();
-            OUT out = func.map(element.getValue(), bc);
-            output.collect(new StreamRecord<>(out));
+            func.map(element.getValue(), bc, fnCollector);
+            output.collect(new StreamRecord<>(outValue));
         }
 
         @Override
-        public void processElement2(StreamRecord<BC> element) {
+        public void processElement2(StreamRecord<DATA> element) {
             bc = element.getValue();
         }
     }

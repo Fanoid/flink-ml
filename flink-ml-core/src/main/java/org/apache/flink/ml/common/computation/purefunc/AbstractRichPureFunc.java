@@ -19,19 +19,21 @@
 package org.apache.flink.ml.common.computation.purefunc;
 
 import org.apache.flink.annotation.Experimental;
+import org.apache.flink.util.Collector;
 
 /** An abstract stub implementation for rich pure user-defined functions. */
 @Experimental
 public abstract class AbstractRichPureFunc<OUT> implements RichPureFunc<OUT> {
 
     private transient PureFuncContext context;
-    private transient SerializedConsumer<OUT> collectFn;
+
+    protected AbstractRichPureFunc() {}
 
     @Override
     public void open() throws Exception {}
 
     @Override
-    public void close() throws Exception {}
+    public void close(Collector<OUT> out) throws Exception {}
 
     @Override
     public PureFuncContext getContext() {
@@ -41,14 +43,5 @@ public abstract class AbstractRichPureFunc<OUT> implements RichPureFunc<OUT> {
     @Override
     public void setContext(PureFuncContext context) {
         this.context = context;
-    }
-
-    public void setCollectFn(SerializedConsumer<OUT> collectFn) {
-        this.collectFn = collectFn;
-    }
-
-    @Override
-    public void collect(OUT value) {
-        collectFn.accept(value);
     }
 }

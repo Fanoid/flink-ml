@@ -19,18 +19,24 @@
 package org.apache.flink.ml.common.computation.purefunc;
 
 import org.apache.flink.annotation.Experimental;
+import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.functions.RichMapFunction;
 import org.apache.flink.api.common.functions.RuntimeContext;
 
 /**
- * Similar to {@link RichMapFunction} but with an addition broadcast parameter. Compared to {@link
+ * Similar to {@link MapFunction} but with an addition broadcast parameter. Compared to {@link
  * RichMapFunction} with {@link RuntimeContext#getBroadcastVariable}, this interface can be used in
  * a broader situations since it involves no Flink runtime.
  *
- * @param <IN> Type of input elements.
- * @param <OUT> Type of output elements.
- * @param <BC> Type of broadcast element.
+ * @param <T> Type of input/output elements.
  */
 @Experimental
-public abstract class RichMapWithBcPureFunc<IN, OUT, BC> extends AbstractRichPureFunc<OUT>
-        implements MapWithBcPureFunc<IN, OUT, BC> {}
+@FunctionalInterface
+public interface ReducePureFunc<T> extends IterativeReducePureFunc<T> {
+    T reduce(T value1, T value2) throws Exception;
+
+    @Override
+    default T reduce(T value1, T value2, int iteration) throws Exception {
+        return reduce(value1, value2);
+    }
+}

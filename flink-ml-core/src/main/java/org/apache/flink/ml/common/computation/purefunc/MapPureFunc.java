@@ -35,10 +35,10 @@ import org.apache.flink.util.Collector;
 @Experimental
 @FunctionalInterface
 public interface MapPureFunc<IN, OUT> extends IterativeMapPureFunc<IN, OUT> {
-    void map(IN value, Collector<OUT> out);
+    void map(IN value, Collector<OUT> out) throws Exception;
 
     @Override
-    default void map(IN value, int iteration, Collector<OUT> out) {
+    default void map(IN value, int iteration, Collector<OUT> out) throws Exception {
         map(value, out);
     }
 }

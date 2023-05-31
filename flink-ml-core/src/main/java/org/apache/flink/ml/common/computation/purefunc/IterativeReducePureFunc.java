@@ -28,13 +28,10 @@ import org.apache.flink.api.common.functions.RuntimeContext;
  * RichMapFunction} with {@link RuntimeContext#getBroadcastVariable}, this interface can be used in
  * a broader situations since it involves no Flink runtime.
  *
- * @param <IN> Type of input elements.
- * @param <OUT> Type of output elements.
- * @param <BC> Type of broadcast element.
+ * @param <T> Type of input/output elements.
  */
 @Experimental
 @FunctionalInterface
-public interface MapWithBcPureFunc<IN, OUT, BC> extends OneInputPureFunc<IN, OUT> {
-    // TODO: use List<BC> instead of BC
-    OUT map(IN elem, BC bc);
+public interface IterativeReducePureFunc<T> extends OneInputPureFunc<T, T> {
+    T reduce(T value1, T value2, int iteration) throws Exception;
 }

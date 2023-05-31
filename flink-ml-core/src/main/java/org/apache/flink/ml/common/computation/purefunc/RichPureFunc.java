@@ -19,8 +19,7 @@
 package org.apache.flink.ml.common.computation.purefunc;
 
 import org.apache.flink.annotation.Experimental;
-import org.apache.flink.api.common.state.State;
-import org.apache.flink.api.common.state.StateDescriptor;
+import org.apache.flink.util.Collector;
 
 import java.util.List;
 
@@ -32,10 +31,10 @@ import java.util.List;
 public interface RichPureFunc<OUT> extends PureFunc<OUT> {
     void open() throws Exception;
 
-    void close() throws Exception;
+    void close(Collector<OUT> out) throws Exception;
 
-    default void reset() throws Exception {
-        close();
+    default void reset(Collector<OUT> out) throws Exception {
+        close(out);
         open();
     }
 
@@ -43,37 +42,5 @@ public interface RichPureFunc<OUT> extends PureFunc<OUT> {
 
     void setContext(PureFuncContext context);
 
-    void collect(OUT value);
-
     List<StateDesc<?, ?>> getStateDescs();
-
-    /**
-     * Descriptors for states, which is similar with {@link StateDescriptor}, except snapshot and
-     * initialize functions are provided. In this way, the snapshot and initialization of states are
-     * only be called by the infrastructure.
-     *
-     * @param <S> The type of {@link State}.
-     * @param <T> The type of value stored in the {@link State}.
-     */
-    class StateDesc<S extends State, T> {
-        public final StateDescriptor<S, T> desc;
-        public final SerializedConsumerWithException<S, ?> snapshotFn;
-        public final SerializedConsumerWithException<S, ?> initializeFn;
-
-        private StateDesc(
-                StateDescriptor<S, T> desc,
-                SerializedConsumerWithException<S, ?> snapshotFn,
-                SerializedConsumerWithException<S, ?> initializeFn) {
-            this.desc = desc;
-            this.snapshotFn = snapshotFn;
-            this.initializeFn = initializeFn;
-        }
-
-        public static <S extends State, T> StateDesc<S, T> of(
-                StateDescriptor<S, T> desc,
-                SerializedConsumerWithException<S, ?> snapshotFn,
-                SerializedConsumerWithException<S, ?> initializeFn) {
-            return new StateDesc<>(desc, snapshotFn, initializeFn);
-        }
-    }
 }

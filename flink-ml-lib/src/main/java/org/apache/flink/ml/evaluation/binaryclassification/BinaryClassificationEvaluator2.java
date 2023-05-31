@@ -18,21 +18,22 @@
 
 package org.apache.flink.ml.evaluation.binaryclassification;
 
-import org.apache.flink.api.common.state.ListStateDescriptor;
 import org.apache.flink.api.common.typeinfo.PrimitiveArrayTypeInfo;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.api.java.tuple.Tuple4;
-import org.apache.flink.iteration.operator.OperatorStateUtils;
 import org.apache.flink.ml.api.AlgoOperator;
 import org.apache.flink.ml.common.computation.builder.Data;
 import org.apache.flink.ml.common.computation.computation.CompositeComputation;
 import org.apache.flink.ml.common.computation.purefunc.MapPartitionPureFunc;
-import org.apache.flink.ml.common.computation.purefunc.MapPartitionWithDataPureFunc;
+import org.apache.flink.ml.common.computation.purefunc.MapPureFunc;
+import org.apache.flink.ml.common.computation.purefunc.MapWithDataPureFunc;
+import org.apache.flink.ml.common.computation.purefunc.ReducePureFunc;
 import org.apache.flink.ml.common.computation.purefunc.RichMapPartitionPureFunc;
 import org.apache.flink.ml.common.computation.purefunc.RichMapPureFunc;
 import org.apache.flink.ml.common.computation.purefunc.RichMapWithDataPureFunc;
+import org.apache.flink.ml.common.computation.purefunc.StateDesc;
 import org.apache.flink.ml.linalg.Vector;
 import org.apache.flink.ml.param.Param;
 import org.apache.flink.ml.util.ParamUtils;
@@ -153,13 +154,13 @@ public class BinaryClassificationEvaluator2
 
         Data<Row> data = new Data<>(input.getType());
         Data<Tuple3<Double, Boolean, Double>> evalData =
-                data.mapPartition(
+                data.map(
                         new ParseSample(getLabelCol(), getRawPredictionCol(), getWeightCol()),
                         Types.TUPLE(Types.DOUBLE, Types.BOOLEAN, Types.DOUBLE));
         Data<double[]> boundaryRange = getBoundaryRange(evalData);
 
         Data<Tuple4<Double, Boolean, Double, Integer>> evalDataWithTaskId =
-                evalData.mapPartition(
+                evalData.map(
                         new AppendTaskIdPureFunc(),
                         boundaryRange,
                         Types.TUPLE(Types.DOUBLE, Types.BOOLEAN, Types.DOUBLE, Types.INT));
@@ -218,25 +219,20 @@ public class BinaryClassificationEvaluator2
                         PrimitiveArrayTypeInfo.DOUBLE_PRIMITIVE_ARRAY_TYPE_INFO);
 
         Data<double[]> middleAreaUnderROC =
-                localAreaUnderROCVariable
-                        .mapPartition(new AccAucPureFunc(), localAreaUnderROCVariable.type)
-                        .all()
-                        .mapPartition(new AccAucPureFunc(), localAreaUnderROCVariable.type);
+                localAreaUnderROCVariable.reduce(new AucReducePureFunc());
 
         Data<Double> areaUnderROC =
-                middleAreaUnderROC.mapPartition(
-                        new MapPartitionPureFunc<double[], Double>() {
+                middleAreaUnderROC.map(
+                        new MapPureFunc<double[], Double>() {
                             @Override
-                            public void map(Iterable<double[]> values, Collector<Double> out) {
-                                for (double[] value : values) {
-                                    if (value[1] > 0 && value[2] > 0) {
-                                        double v =
-                                                (value[0] - 1. * value[1] * (value[1] + 1) / 2)
-                                                        / (value[1] * value[2]);
-                                        out.collect(v);
-                                    } else {
-                                        out.collect(Double.NaN);
-                                    }
+                            public void map(double[] value, Collector<Double> out) {
+                                if (value[1] > 0 && value[2] > 0) {
+                                    double v =
+                                            (value[0] - 1. * value[1] * (value[1] + 1) / 2)
+                                                    / (value[1] * value[2]);
+                                    out.collect(v);
+                                } else {
+                                    out.collect(Double.NaN);
                                 }
                             }
                         },
@@ -295,20 +291,13 @@ public class BinaryClassificationEvaluator2
         return paramMap;
     }
 
-    private static class AccAucPureFunc implements MapPartitionPureFunc<double[], double[]> {
+    private static class AucReducePureFunc implements ReducePureFunc<double[]> {
         @Override
-        public void map(Iterable<double[]> values, Collector<double[]> out) {
-            double[] acc = null;
-            for (double[] value : values) {
-                if (null == value) {
-                    acc = Arrays.copyOf(value, value.length);
-                } else {
-                    acc[0] += value[0];
-                    acc[1] += value[1];
-                    acc[2] += value[2];
-                }
-            }
-            out.collect(acc);
+        public double[] reduce(double[] value1, double[] value2) {
+            value2[0] += value1[0];
+            value2[1] += value1[1];
+            value2[2] += value1[2];
+            return value2;
         }
     }
 
@@ -340,9 +329,9 @@ public class BinaryClassificationEvaluator2
         }
 
         @Override
-        public void close() {
+        public void close(Collector<double[]> out) {
             if (accValue != null) {
-                collect(
+                out.collect(
                         new double[] {
                             accValue[0] / accValue[1] * accValue[2], accValue[2], accValue[3]
                         });
@@ -352,34 +341,14 @@ public class BinaryClassificationEvaluator2
         @Override
         public List<StateDesc<?, ?>> getStateDescs() {
             return Arrays.asList(
-                    StateDesc.of(
-                            new ListStateDescriptor<>(
-                                    "accValueState", TypeInformation.of(double[].class)),
-                            (s) -> {
-                                s.clear();
-                                if (null != accValue) {
-                                    s.add(accValue);
-                                }
-                            },
-                            (s) -> {
-                                accValue =
-                                        OperatorStateUtils.getUniqueElement(s, "accValueState")
-                                                .orElse(null);
-                            }),
-                    StateDesc.of(
-                            new ListStateDescriptor<>(
-                                    "scoreState", TypeInformation.of(Double.class)),
-                            (s) -> {
-                                s.clear();
-                                if (null != accValue) {
-                                    s.add(score);
-                                }
-                            },
-                            (s) -> {
-                                score =
-                                        OperatorStateUtils.getUniqueElement(s, "scoreState")
-                                                .orElse(0.0);
-                            }));
+                    StateDesc.singleValueState(
+                            "accValueState",
+                            PrimitiveArrayTypeInfo.DOUBLE_PRIMITIVE_ARRAY_TYPE_INFO,
+                            null,
+                            (v) -> accValue = v,
+                            () -> accValue),
+                    StateDesc.singleValueState(
+                            "scoreState", Types.DOUBLE, 0., (v) -> score = v, () -> score));
         }
     }
 
@@ -387,10 +356,12 @@ public class BinaryClassificationEvaluator2
             extends RichMapPureFunc<Tuple3<Double, Boolean, Double>, BinarySummary> {
 
         private BinarySummary summary;
+        private BinarySummary defaultV;
 
         @Override
         public void open() throws Exception {
-            summary = new BinarySummary(getContext().getSubtaskId(), -Double.MAX_VALUE, 0, 0);
+            defaultV = new BinarySummary(getContext().getSubtaskId(), -Double.MAX_VALUE, 0, 0);
+            summary = defaultV;
         }
 
         @Override
@@ -399,32 +370,19 @@ public class BinaryClassificationEvaluator2
         }
 
         @Override
-        public void close() throws Exception {
-            collect(summary);
+        public void close(Collector<BinarySummary> out) throws Exception {
+            out.collect(summary);
         }
 
         @Override
         public List<StateDesc<?, ?>> getStateDescs() {
             return Collections.singletonList(
-                    StateDesc.of(
-                            new ListStateDescriptor<>(
-                                    "summaryState", TypeInformation.of(BinarySummary.class)),
-                            (s) -> {
-                                s.clear();
-                                if (null != summary) {
-                                    s.add(summary);
-                                }
-                            },
-                            (s) -> {
-                                summary =
-                                        OperatorStateUtils.getUniqueElement(s, "summaryState")
-                                                .orElse(
-                                                        new BinarySummary(
-                                                                getContext().getSubtaskId(),
-                                                                -Double.MAX_VALUE,
-                                                                0,
-                                                                0));
-                            }));
+                    StateDesc.singleValueState(
+                            "summaryState",
+                            TypeInformation.of(BinarySummary.class),
+                            defaultV,
+                            (v) -> summary = v,
+                            () -> summary));
         }
     }
 
@@ -466,24 +424,22 @@ public class BinaryClassificationEvaluator2
     }
 
     static class AppendTaskIdPureFunc
-            implements MapPartitionWithDataPureFunc<
+            implements MapWithDataPureFunc<
                     Tuple3<Double, Boolean, Double>,
                     double[],
                     Tuple4<Double, Boolean, Double, Integer>> {
 
         @Override
         public void map(
-                Iterable<Tuple3<Double, Boolean, Double>> values,
+                Tuple3<Double, Boolean, Double> value,
                 double[] boundaryRange,
                 Collector<Tuple4<Double, Boolean, Double, Integer>> out) {
-            for (Tuple3<Double, Boolean, Double> value : values) {
-                for (int i = boundaryRange.length - 1; i > 0; --i) {
-                    if (value.f0 > boundaryRange[i]) {
-                        out.collect(Tuple4.of(value.f0, value.f1, value.f2, i));
-                    }
+            for (int i = boundaryRange.length - 1; i > 0; --i) {
+                if (value.f0 > boundaryRange[i]) {
+                    out.collect(Tuple4.of(value.f0, value.f1, value.f2, i));
                 }
-                out.collect(Tuple4.of(value.f0, value.f1, value.f2, 0));
             }
+            out.collect(Tuple4.of(value.f0, value.f1, value.f2, 0));
         }
     }
 
@@ -542,7 +498,7 @@ public class BinaryClassificationEvaluator2
         }
     }
 
-    static class ParseSample implements MapPartitionPureFunc<Row, Tuple3<Double, Boolean, Double>> {
+    static class ParseSample implements MapPureFunc<Row, Tuple3<Double, Boolean, Double>> {
         private final String labelCol;
         private final String rawPredictionCol;
         private final String weightCol;
@@ -554,20 +510,16 @@ public class BinaryClassificationEvaluator2
         }
 
         @Override
-        public void map(Iterable<Row> values, Collector<Tuple3<Double, Boolean, Double>> out) {
-            for (Row value : values) {
-                double label = ((Number) value.getFieldAs(labelCol)).doubleValue();
-                Object probOrigin = value.getField(rawPredictionCol);
-                double prob =
-                        probOrigin instanceof Vector
-                                ? ((Vector) probOrigin).get(1)
-                                : ((Number) probOrigin).doubleValue();
-                double weight =
-                        weightCol == null
-                                ? 1.0
-                                : ((Number) value.getField(weightCol)).doubleValue();
-                out.collect(Tuple3.of(prob, label == 1.0, weight));
-            }
+        public void map(Row value, Collector<Tuple3<Double, Boolean, Double>> out) {
+            double label = ((Number) value.getFieldAs(labelCol)).doubleValue();
+            Object probOrigin = value.getField(rawPredictionCol);
+            double prob =
+                    probOrigin instanceof Vector
+                            ? ((Vector) probOrigin).get(1)
+                            : ((Number) probOrigin).doubleValue();
+            double weight =
+                    weightCol == null ? 1.0 : ((Number) value.getField(weightCol)).doubleValue();
+            out.collect(Tuple3.of(prob, label == 1.0, weight));
         }
     }
 

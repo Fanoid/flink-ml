@@ -33,7 +33,8 @@ import org.apache.flink.api.java.tuple.Tuple4;
 import org.apache.flink.api.java.typeutils.runtime.TupleSerializer;
 import org.apache.flink.iteration.IterationListener;
 import org.apache.flink.iteration.operator.OperatorStateUtils;
-import org.apache.flink.ml.common.computation.purefunc.RichMapWithBcPureFunc;
+import org.apache.flink.ml.common.computation.purefunc.RichMapWithDataPureFunc;
+import org.apache.flink.ml.common.computation.purefunc.StateDesc;
 import org.apache.flink.ml.common.datastream.DataStreamInIterationUtils;
 import org.apache.flink.ml.evaluation.binaryclassification.BinaryClassificationEvaluator.AppendTaskIdPureFunc;
 import org.apache.flink.ml.evaluation.binaryclassification.BinaryClassificationEvaluator.BinarySummary;
@@ -71,7 +72,7 @@ public class EvalIterationUtils {
 
         //noinspection unchecked
         DataStream<Tuple4<Double, Boolean, Double, Integer>> evalDataWithTaskId =
-                DataStreamInIterationUtils.mapWithBc(
+                DataStreamInIterationUtils.mapWithData(
                         evalData,
                         boundaryRange,
                         new AppendTaskIdPureFunc(),
@@ -134,7 +135,7 @@ public class EvalIterationUtils {
 
         //noinspection unchecked
         DataStream<Tuple4<Double, Long, Boolean, Double>> dataWithOrders =
-                DataStreamInIterationUtils.mapWithBc(
+                DataStreamInIterationUtils.mapWithData(
                         sortEvalData,
                         partitionSummariesList,
                         new CalcSampleOrdersPureFunc(),
@@ -296,10 +297,10 @@ public class EvalIterationUtils {
     }
 
     static class CalcSampleOrdersPureFunc
-            extends RichMapWithBcPureFunc<
+            extends RichMapWithDataPureFunc<
                     Tuple3<Double, Boolean, Double>,
-                    Tuple4<Double, Long, Boolean, Double>,
-                    List<BinarySummary>> {
+                    List<BinarySummary>,
+                    Tuple4<Double, Long, Boolean, Double>> {
 
         private long[] countValues;
         private long startIndex;
@@ -316,17 +317,17 @@ public class EvalIterationUtils {
         }
 
         @Override
-        public Tuple4<Double, Long, Boolean, Double> map(
-                Tuple3<Double, Boolean, Double> value, List<BinarySummary> statistics) {
+        public void map(
+                Tuple3<Double, Boolean, Double> value,
+                List<BinarySummary> statistics,
+                Collector<Tuple4<Double, Long, Boolean, Double>> out) {
             if (null == countValues) {
                 countValues = reduceBinarySummary(statistics, getContext().getSubtaskId());
                 startIndex = countValues[1] + countValues[0] + 1;
                 total = countValues[2] + countValues[3];
             }
-            Tuple4<Double, Long, Boolean, Double> out =
-                    Tuple4.of(value.f0, total - startIndex + 1, value.f1, value.f2);
+            out.collect(Tuple4.of(value.f0, total - startIndex + 1, value.f1, value.f2));
             startIndex++;
-            return out;
         }
     }
 

@@ -28,9 +28,15 @@ import org.apache.flink.ml.common.computation.purefunc.MapPartitionWithDataPureF
 import org.apache.flink.ml.common.computation.purefunc.MapPureFunc;
 import org.apache.flink.ml.common.computation.purefunc.MapWithDataPureFunc;
 import org.apache.flink.ml.common.computation.purefunc.OneInputPureFunc;
+import org.apache.flink.ml.common.computation.purefunc.ReducePureFunc;
+import org.apache.flink.ml.common.computation.purefunc.RichMapPureFunc;
+import org.apache.flink.ml.common.computation.purefunc.RichPureFunc;
+import org.apache.flink.ml.common.computation.purefunc.StateDesc;
 import org.apache.flink.ml.common.computation.purefunc.TwoInputPureFunc;
+import org.apache.flink.util.Collector;
 import org.apache.flink.util.Preconditions;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -140,6 +146,17 @@ public class Data<T> {
         return transformTwoInputPureFunc(name, mapper, outType, data);
     }
 
+    public Data<T> reduce(ReducePureFunc<T> reducer) {
+        return reduce(reducer.getClass().getSimpleName(), reducer);
+    }
+
+    public Data<T> reduce(String name, ReducePureFunc<T> reducer) {
+        MapperForReduce<T> mapperForReduce = new MapperForReduce<>(reducer, type);
+        return map(name + "-combine", mapperForReduce, type)
+                .all()
+                .map(name + "-reduce", mapperForReduce, type);
+    }
+
     <R> Data<R> transformOneInputPureFunc(
             String name, OneInputPureFunc<T, R> mapper, TypeInformation<R> outType) {
         return transform(
@@ -166,5 +183,50 @@ public class Data<T> {
 
     public TypeInformation<T> getType() {
         return type;
+    }
+
+    static class MapperForReduce<T> extends RichMapPureFunc<T, T> {
+
+        private final ReducePureFunc<T> reducer;
+        private final TypeInformation<T> type;
+
+        private T reduced;
+
+        MapperForReduce(ReducePureFunc<T> reducer, TypeInformation<T> type) {
+            this.reducer = reducer;
+            this.type = type;
+        }
+
+        @Override
+        public void open() throws Exception {
+            reduced = null;
+        }
+
+        @Override
+        public void close(Collector<T> out) throws Exception {
+            out.collect(reduced);
+        }
+
+        @Override
+        public void map(T value, Collector<T> out) throws Exception {
+            if (null == reduced) {
+                reduced = value;
+            } else {
+                reduced = reducer.reduce(reduced, value);
+            }
+        }
+
+        @Override
+        public List<StateDesc<?, ?>> getStateDescs() {
+            List<StateDesc<?, ?>> stateDescs = new ArrayList<>();
+            StateDesc<?, ?> reducedStateDesc =
+                    StateDesc.singleValueState(
+                            "__reduced_value", type, null, (v) -> reduced = v, () -> reduced);
+            stateDescs.add(reducedStateDesc);
+            if (reduced instanceof RichPureFunc) {
+                stateDescs.addAll(((RichPureFunc<?>) reduced).getStateDescs());
+            }
+            return stateDescs;
+        }
     }
 }

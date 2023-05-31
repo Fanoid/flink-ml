@@ -27,7 +27,7 @@ import org.apache.flink.ml.common.computation.computation.CompositeComputation;
 import org.apache.flink.ml.common.computation.computation.IterationComputation;
 import org.apache.flink.ml.common.computation.purefunc.MapPureFunc;
 import org.apache.flink.ml.common.computation.purefunc.MapWithDataPureFunc;
-import org.apache.flink.ml.common.computation.purefunc.RichMapPureFunc;
+import org.apache.flink.ml.common.computation.purefunc.ReducePureFunc;
 import org.apache.flink.ml.common.distance.DistanceMeasure;
 import org.apache.flink.ml.linalg.BLAS;
 import org.apache.flink.ml.linalg.DenseVector;
@@ -78,9 +78,7 @@ public class KMeans2 implements Estimator<KMeans2, KMeansModel>, KMeansParams<KM
 
         Data<KMeansModelData> newModelData =
                 centroidIdAndPoints
-                        .map(new CentroidsUpdateReducePureFunc(), centroidIdAndPoints.type)
-                        .all()
-                        .map(new CentroidsUpdateReducePureFunc(), centroidIdAndPoints.type)
+                        .reduce(new CentroidsUpdateReducer())
                         .map(new ModelDataGenerator(), TypeInformation.of(KMeansModelData.class));
 
         Data<DenseVector[]> newCentroids =
@@ -202,39 +200,17 @@ public class KMeans2 implements Estimator<KMeans2, KMeansModel>, KMeansParams<KM
         }
     }
 
-    static class CentroidsUpdateReducePureFunc
-            extends RichMapPureFunc<
-                    Tuple2<Integer[], DenseVector[]>, Tuple2<Integer[], DenseVector[]>> {
-
-        private Tuple2<Integer[], DenseVector[]> reduced;
-
+    static class CentroidsUpdateReducer
+            implements ReducePureFunc<Tuple2<Integer[], DenseVector[]>> {
         @Override
-        public void open() throws Exception {
-            reduced = null;
-        }
-
-        @Override
-        public void map(
-                Tuple2<Integer[], DenseVector[]> value,
-                Collector<Tuple2<Integer[], DenseVector[]>> out) {
-            if (null == reduced) {
-                reduced = value;
-                return;
+        public Tuple2<Integer[], DenseVector[]> reduce(
+                Tuple2<Integer[], DenseVector[]> tuple2, Tuple2<Integer[], DenseVector[]> t1)
+                throws Exception {
+            for (int i = 0; i < tuple2.f0.length; i++) {
+                tuple2.f0[i] += t1.f0[i];
+                BLAS.axpy(1.0, t1.f1[i], tuple2.f1[i]);
             }
-            for (int i = 0; i < reduced.f0.length; i++) {
-                reduced.f0[i] += value.f0[i];
-                BLAS.axpy(1.0, value.f1[i], reduced.f1[i]);
-            }
-        }
-
-        @Override
-        public void close() throws Exception {
-            collect(reduced);
-        }
-
-        @Override
-        public List<StateDesc<?, ?>> getStateDescs() {
-            return Collections.emptyList();
+            return tuple2;
         }
     }
 
