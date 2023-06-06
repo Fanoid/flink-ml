@@ -22,7 +22,9 @@ import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.ml.common.computation.purefunc.FlinkExecutor;
 import org.apache.flink.ml.common.computation.purefunc.FlinkIterationExecutor;
 import org.apache.flink.ml.common.computation.purefunc.MapPartitionPureFunc;
+import org.apache.flink.ml.common.computation.purefunc.MapPartitionWithDataPureFunc;
 import org.apache.flink.ml.common.computation.purefunc.MapPureFunc;
+import org.apache.flink.ml.common.computation.purefunc.MapWithDataPureFunc;
 import org.apache.flink.ml.common.computation.purefunc.PureFunc;
 import org.apache.flink.streaming.api.datastream.DataStream;
 
@@ -75,6 +77,17 @@ public class PureFuncComputation implements Computation {
             DataStream<?> output =
                     FlinkExecutor.execute(input, (MapPartitionPureFunc) func, outType);
             return Collections.singletonList(output);
+        } else if (func instanceof MapWithDataPureFunc) {
+            //noinspection unchecked,rawtypes
+            DataStream<?> output =
+                    FlinkExecutor.execute(input, inputs[1], (MapWithDataPureFunc) func, outType);
+            return Collections.singletonList(output);
+        } else if (func instanceof MapPartitionWithDataPureFunc) {
+            //noinspection unchecked,rawtypes
+            DataStream<?> output =
+                    FlinkExecutor.execute(
+                            input, inputs[1], (MapPartitionWithDataPureFunc) func, outType);
+            return Collections.singletonList(output);
         } else {
             throw new UnsupportedOperationException(
                     String.format("Not supported for %s yet.", func.getClass().getSimpleName()));
@@ -93,6 +106,18 @@ public class PureFuncComputation implements Computation {
             //noinspection unchecked,rawtypes
             DataStream<?> output =
                     FlinkIterationExecutor.execute(input, (MapPartitionPureFunc) func, outType);
+            return Collections.singletonList(output);
+        } else if (func instanceof MapWithDataPureFunc) {
+            //noinspection unchecked,rawtypes
+            DataStream<?> output =
+                    FlinkIterationExecutor.execute(
+                            input, inputs[1], (MapWithDataPureFunc) func, outType);
+            return Collections.singletonList(output);
+        } else if (func instanceof MapPartitionWithDataPureFunc) {
+            //noinspection unchecked,rawtypes
+            DataStream<?> output =
+                    FlinkIterationExecutor.execute(
+                            input, inputs[1], (MapPartitionWithDataPureFunc) func, outType);
             return Collections.singletonList(output);
         } else {
             throw new UnsupportedOperationException(
