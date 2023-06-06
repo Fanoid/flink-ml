@@ -16,31 +16,83 @@
  * limitations under the License.
  */
 
-package org.apache.flink.ml.common.computation.purefunc;
+package org.apache.flink.ml.common.computation.execution;
 
+import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.ml.common.computation.computation.Computation;
+import org.apache.flink.ml.common.computation.purefunc.ConsumerCollector;
+import org.apache.flink.ml.common.computation.purefunc.MapPartitionPureFunc;
+import org.apache.flink.ml.common.computation.purefunc.MapPartitionWithDataPureFunc;
+import org.apache.flink.ml.common.computation.purefunc.MapPureFunc;
+import org.apache.flink.ml.common.computation.purefunc.MapWithDataPureFunc;
+import org.apache.flink.ml.common.computation.purefunc.PureFunc;
 import org.apache.flink.util.Collector;
+import org.apache.flink.util.Preconditions;
+
+import org.apache.commons.collections.IteratorUtils;
 
 import java.util.ArrayDeque;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Queue;
 
-class IterableExecutor {
-    static <IN, OUT> Iterable<OUT> execute(Iterable<IN> in, MapPureFunc<IN, OUT> func) {
-        return () -> new MapPureFuncIterator<>(in, func);
+/** Executor with {@link Iterable} as inputs and outputs. */
+@SuppressWarnings("unchecked")
+public class IterableExecutor implements ComputationExecutor<Iterable<?>> {
+
+    private static final IterableExecutor instance = new IterableExecutor();
+
+    public static IterableExecutor getInstance() {
+        return instance;
     }
 
-    static <IN, DATA, OUT> Iterable<OUT> execute(
-            Iterable<IN> in, DATA data, MapWithDataPureFunc<IN, DATA, OUT> func) {
-        return () -> new MapWithDataPureFuncIterator<>(in, data, func);
+    @Override
+    public <IN, OUT> Iterable<OUT> executeMap(
+            Iterable<?> in, MapPureFunc<IN, OUT> func, TypeInformation<OUT> outType) {
+        //noinspection unchecked,rawtypes
+        return () -> new MapPureFuncIterator(in, func);
     }
 
-    static <IN, OUT> Iterable<OUT> execute(Iterable<IN> in, MapPartitionPureFunc<IN, OUT> func) {
-        return () -> new MapPartitionPureFuncIterator<>(in, func);
+    @Override
+    public <IN, DATA, OUT> Iterable<OUT> executeMapWithData(
+            Iterable<?> in,
+            Iterable<?> data,
+            MapWithDataPureFunc<IN, DATA, OUT> func,
+            TypeInformation<OUT> outType) {
+        List<DATA> dataList = IteratorUtils.toList(data.iterator());
+        Preconditions.checkState(dataList.size() == 1);
+        //noinspection unchecked,rawtypes
+        return () -> new MapWithDataPureFuncIterator(in, dataList.get(0), func);
     }
 
-    static <IN, DATA, OUT> Iterable<OUT> execute(
-            Iterable<IN> in, DATA data, MapPartitionWithDataPureFunc<IN, DATA, OUT> func) {
-        return () -> new MapPartitionWithDataPureFuncIterator<>(in, data, func);
+    @Override
+    public <IN, OUT> Iterable<OUT> executeMapPartition(
+            Iterable<?> in, MapPartitionPureFunc<IN, OUT> func, TypeInformation<OUT> outType) {
+        //noinspection unchecked,rawtypes
+        return () -> new MapPartitionPureFuncIterator(in, func);
+    }
+
+    @Override
+    public <IN, DATA, OUT> Iterable<OUT> executeMapPartitionWithData(
+            Iterable<?> in,
+            Iterable<?> data,
+            MapPartitionWithDataPureFunc<IN, DATA, OUT> func,
+            TypeInformation<OUT> outType) {
+        List<DATA> dataList = IteratorUtils.toList(data.iterator());
+        Preconditions.checkState(dataList.size() == 1);
+        //noinspection unchecked,rawtypes
+        return () -> new MapPartitionWithDataPureFuncIterator(in, dataList.get(0), func);
+    }
+
+    @Override
+    public <OUT> Iterable<OUT> executeOtherPureFunc(
+            List<Iterable<?>> inputs, PureFunc<OUT> func, TypeInformation<OUT> outType) {
+        return (Iterable<OUT>) func.execute(inputs).get(0);
+    }
+
+    @Override
+    public List<Iterable<?>> execute(Computation computation, List<Iterable<?>> inputs) {
+        return null;
     }
 
     static class MapPureFuncIterator<OUT, IN> implements Iterator<OUT> {

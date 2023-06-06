@@ -22,6 +22,7 @@ import org.apache.flink.annotation.Experimental;
 import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.functions.RichMapFunction;
 import org.apache.flink.api.common.functions.RuntimeContext;
+import org.apache.flink.ml.common.computation.execution.IterableExecutor;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.Preconditions;
 
@@ -44,8 +45,7 @@ public interface MapPureFunc<IN, OUT> extends OneInputPureFunc<IN, OUT> {
     @Override
     default List<Iterable<?>> execute(Iterable<?>... inputs) {
         Preconditions.checkArgument(getNumInputs() == inputs.length);
-        //noinspection unchecked
-        Iterable<IN> input = (Iterable<IN>) inputs[0];
-        return Collections.singletonList(IterableExecutor.execute(input, this));
+        return Collections.singletonList(
+                IterableExecutor.getInstance().executeMap(inputs[0], this, null));
     }
 }

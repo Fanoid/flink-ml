@@ -16,12 +16,13 @@
  * limitations under the License.
  */
 
-package org.apache.flink.ml.common.computation.purefunc;
+package org.apache.flink.ml.common.computation.execution;
 
 import org.apache.flink.api.common.state.ListState;
 import org.apache.flink.api.common.state.ListStateDescriptor;
 import org.apache.flink.api.common.state.State;
 import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.ml.common.computation.purefunc.StateDesc;
 import org.apache.flink.runtime.state.StateInitializationContext;
 import org.apache.flink.runtime.state.StateSnapshotContext;
 import org.apache.flink.streaming.api.operators.StreamOperatorStateHandler;

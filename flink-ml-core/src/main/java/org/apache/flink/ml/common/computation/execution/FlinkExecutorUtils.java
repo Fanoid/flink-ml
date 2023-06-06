@@ -16,11 +16,23 @@
  * limitations under the License.
  */
 
-package org.apache.flink.ml.common.computation.purefunc;
+package org.apache.flink.ml.common.computation.execution;
 
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.iteration.IterationListener;
 import org.apache.flink.iteration.datacache.nonkeyed.ListStateWithCache;
+import org.apache.flink.ml.common.computation.purefunc.ConsumerCollector;
+import org.apache.flink.ml.common.computation.purefunc.MapPartitionPureFunc;
+import org.apache.flink.ml.common.computation.purefunc.MapPartitionWithDataPureFunc;
+import org.apache.flink.ml.common.computation.purefunc.MapPureFunc;
+import org.apache.flink.ml.common.computation.purefunc.MapWithDataPureFunc;
+import org.apache.flink.ml.common.computation.purefunc.PureFuncContextImpl;
+import org.apache.flink.ml.common.computation.purefunc.RichMapPartitionPureFunc;
+import org.apache.flink.ml.common.computation.purefunc.RichMapPartitionWithDataPureFunc;
+import org.apache.flink.ml.common.computation.purefunc.RichMapPureFunc;
+import org.apache.flink.ml.common.computation.purefunc.RichMapWithDataPureFunc;
+import org.apache.flink.ml.common.computation.purefunc.RichPureFunc;
+import org.apache.flink.ml.common.computation.purefunc.StateDesc;
 import org.apache.flink.runtime.state.StateInitializationContext;
 import org.apache.flink.runtime.state.StateSnapshotContext;
 import org.apache.flink.streaming.api.operators.AbstractStreamOperator;

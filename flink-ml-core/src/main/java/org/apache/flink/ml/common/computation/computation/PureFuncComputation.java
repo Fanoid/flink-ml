@@ -19,15 +19,13 @@
 package org.apache.flink.ml.common.computation.computation;
 
 import org.apache.flink.api.common.typeinfo.TypeInformation;
-import org.apache.flink.ml.common.computation.purefunc.FlinkExecutor;
-import org.apache.flink.ml.common.computation.purefunc.FlinkIterationExecutor;
-import org.apache.flink.ml.common.computation.purefunc.MapPartitionPureFunc;
-import org.apache.flink.ml.common.computation.purefunc.MapPartitionWithDataPureFunc;
-import org.apache.flink.ml.common.computation.purefunc.MapPureFunc;
-import org.apache.flink.ml.common.computation.purefunc.MapWithDataPureFunc;
+import org.apache.flink.ml.common.computation.execution.FlinkExecutor;
+import org.apache.flink.ml.common.computation.execution.FlinkIterationExecutor;
+import org.apache.flink.ml.common.computation.execution.IterableExecutor;
 import org.apache.flink.ml.common.computation.purefunc.PureFunc;
 import org.apache.flink.streaming.api.datastream.DataStream;
 
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
@@ -62,66 +60,21 @@ public class PureFuncComputation implements Computation {
 
     @Override
     public List<Iterable<?>> execute(Iterable<?>... inputs) {
-        return func.execute(inputs);
+        return Collections.singletonList(
+                IterableExecutor.getInstance().execute(this, Arrays.asList(inputs)));
     }
 
     @Override
     public List<DataStream<?>> executeOnFlink(DataStream<?>... inputs) {
-        DataStream<?> input = inputs[0];
-        if (func instanceof MapPureFunc) {
-            //noinspection unchecked,rawtypes
-            DataStream<?> output = FlinkExecutor.execute(input, (MapPureFunc) func, outType);
-            return Collections.singletonList(output);
-        } else if (func instanceof MapPartitionPureFunc) {
-            //noinspection unchecked,rawtypes
-            DataStream<?> output =
-                    FlinkExecutor.execute(input, (MapPartitionPureFunc) func, outType);
-            return Collections.singletonList(output);
-        } else if (func instanceof MapWithDataPureFunc) {
-            //noinspection unchecked,rawtypes
-            DataStream<?> output =
-                    FlinkExecutor.execute(input, inputs[1], (MapWithDataPureFunc) func, outType);
-            return Collections.singletonList(output);
-        } else if (func instanceof MapPartitionWithDataPureFunc) {
-            //noinspection unchecked,rawtypes
-            DataStream<?> output =
-                    FlinkExecutor.execute(
-                            input, inputs[1], (MapPartitionWithDataPureFunc) func, outType);
-            return Collections.singletonList(output);
-        } else {
-            throw new UnsupportedOperationException(
-                    String.format("Not supported for %s yet.", func.getClass().getSimpleName()));
-        }
+        //noinspection unchecked
+        return Collections.singletonList(
+                FlinkExecutor.getInstance().execute(this, Arrays.asList(inputs)));
     }
 
     @Override
     public List<DataStream<?>> executeInIterations(DataStream<?>... inputs) {
-        DataStream<?> input = inputs[0];
-        if (func instanceof MapPureFunc) {
-            //noinspection unchecked,rawtypes
-            DataStream<?> output =
-                    FlinkIterationExecutor.execute(input, (MapPureFunc) func, outType);
-            return Collections.singletonList(output);
-        } else if (func instanceof MapPartitionPureFunc) {
-            //noinspection unchecked,rawtypes
-            DataStream<?> output =
-                    FlinkIterationExecutor.execute(input, (MapPartitionPureFunc) func, outType);
-            return Collections.singletonList(output);
-        } else if (func instanceof MapWithDataPureFunc) {
-            //noinspection unchecked,rawtypes
-            DataStream<?> output =
-                    FlinkIterationExecutor.execute(
-                            input, inputs[1], (MapWithDataPureFunc) func, outType);
-            return Collections.singletonList(output);
-        } else if (func instanceof MapPartitionWithDataPureFunc) {
-            //noinspection unchecked,rawtypes
-            DataStream<?> output =
-                    FlinkIterationExecutor.execute(
-                            input, inputs[1], (MapPartitionWithDataPureFunc) func, outType);
-            return Collections.singletonList(output);
-        } else {
-            throw new UnsupportedOperationException(
-                    String.format("Not supported for %s yet.", func.getClass().getSimpleName()));
-        }
+        //noinspection unchecked
+        return Collections.singletonList(
+                FlinkIterationExecutor.getInstance().execute(this, Arrays.asList(inputs)));
     }
 }

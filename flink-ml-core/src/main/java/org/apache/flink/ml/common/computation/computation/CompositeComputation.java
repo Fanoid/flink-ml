@@ -20,6 +20,8 @@ package org.apache.flink.ml.common.computation.computation;
 
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.ml.common.computation.builder.Data;
+import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.util.Preconditions;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -44,5 +46,21 @@ public class CompositeComputation implements Computation {
     @Override
     public List<TypeInformation<?>> getOutTypes() {
         return outTypes;
+    }
+
+    @Override
+    public List<Iterable<?>> execute(Iterable<?>... inputs) {
+        Preconditions.checkArgument(inputs.length == starts.size());
+        return Computation.super.execute(inputs);
+    }
+
+    @Override
+    public List<DataStream<?>> executeOnFlink(DataStream<?>... inputs) {
+        return Computation.super.executeOnFlink(inputs);
+    }
+
+    @Override
+    public List<DataStream<?>> executeInIterations(DataStream<?>... inputs) {
+        return Computation.super.executeInIterations(inputs);
     }
 }
