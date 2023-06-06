@@ -26,16 +26,53 @@ import java.util.Queue;
 
 class IterableExecutor {
     static <IN, OUT> Iterable<OUT> execute(Iterable<IN> in, MapPureFunc<IN, OUT> func) {
-        return () -> new MapperIterator<>(in.iterator(), func);
+        return () -> new MapPureFuncIterator<>(in, func);
     }
 
-    static class MapperIterator<OUT, IN> implements Iterator<OUT> {
-        private final Iterator<IN> in;
+    public static <IN, OUT> Iterable<OUT> execute(
+            Iterable<IN> in, MapPartitionPureFunc<IN, OUT> func) {
+        return () -> new MapPartitionPureFuncIterator<>(in, func);
+    }
+
+    static class MapPureFuncIterator<OUT, IN> implements Iterator<OUT> {
+        private final Iterator<IN> iter;
         private final MapPureFunc<IN, OUT> fn;
         private final Collector<OUT> collector;
         private final Queue<OUT> output;
 
-        public MapperIterator(Iterator<IN> in, MapPureFunc<IN, OUT> fn) {
+        public MapPureFuncIterator(Iterable<IN> in, MapPureFunc<IN, OUT> fn) {
+            this.iter = in.iterator();
+            this.fn = fn;
+            output = new ArrayDeque<>();
+            collector = new ConsumerCollector<>(output::add);
+        }
+
+        @Override
+        public boolean hasNext() {
+            while (output.isEmpty() && iter.hasNext()) {
+                try {
+                    fn.map(iter.next(), collector);
+                } catch (Exception e) {
+                    throw new RuntimeException(
+                            String.format("Call map failed in %s", fn.getClass().getSimpleName()));
+                }
+            }
+            return !output.isEmpty();
+        }
+
+        @Override
+        public OUT next() {
+            return output.poll();
+        }
+    }
+
+    static class MapPartitionPureFuncIterator<OUT, IN> implements Iterator<OUT> {
+        private final Iterable<IN> in;
+        private final MapPartitionPureFunc<IN, OUT> fn;
+        private final Collector<OUT> collector;
+        private final Queue<OUT> output;
+
+        public MapPartitionPureFuncIterator(Iterable<IN> in, MapPartitionPureFunc<IN, OUT> fn) {
             this.in = in;
             this.fn = fn;
             output = new ArrayDeque<>();
@@ -44,14 +81,8 @@ class IterableExecutor {
 
         @Override
         public boolean hasNext() {
-            while (output.isEmpty() && in.hasNext()) {
-                try {
-                    fn.map(in.next(), collector);
-                } catch (Exception e) {
-                    throw new RuntimeException(
-                            String.format("Call map failed in %s", fn.getClass().getSimpleName()));
-                }
-            }
+            // TODO: Improve this with SynchronousQueue.
+            fn.map(in, collector);
             return !output.isEmpty();
         }
 

@@ -31,7 +31,7 @@ public class OutputData<T> extends Data<T> {
 
     public OutputData(OutputDataList dataList, int index) {
         //noinspection unchecked
-        super((TypeInformation<T>) dataList.computation.getOutputTypes().get(index));
+        super((TypeInformation<T>) dataList.computation.getOutTypes().get(index));
         this.dataList = dataList;
         this.index = index;
     }

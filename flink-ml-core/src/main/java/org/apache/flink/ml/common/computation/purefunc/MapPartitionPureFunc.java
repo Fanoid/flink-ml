@@ -22,7 +22,12 @@ import org.apache.flink.annotation.Experimental;
 import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.functions.RichMapFunction;
 import org.apache.flink.api.common.functions.RuntimeContext;
+import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.util.Collector;
+import org.apache.flink.util.Preconditions;
+
+import java.util.Collections;
+import java.util.List;
 
 /**
  * Similar to {@link MapFunction} but with an addition broadcast parameter. Compared to {@link
@@ -36,4 +41,22 @@ import org.apache.flink.util.Collector;
 @FunctionalInterface
 public interface MapPartitionPureFunc<IN, OUT> extends OneInputPureFunc<IN, OUT> {
     void map(Iterable<IN> values, Collector<OUT> out);
+
+    @Override
+    default List<Iterable<?>> execute(Iterable<?>... inputs) {
+        Preconditions.checkArgument(getNumInputs() == inputs.length);
+        //noinspection unchecked
+        Iterable<IN> input = (Iterable<IN>) inputs[0];
+        return Collections.singletonList(IterableExecutor.execute(input, this));
+    }
+
+    @Override
+    default List<DataStream<?>> executeOnFlink(DataStream<?>... inputs) {
+        return OneInputPureFunc.super.executeOnFlink(inputs);
+    }
+
+    @Override
+    default List<DataStream<?>> executeInIterations(DataStream<?>... inputs) {
+        return OneInputPureFunc.super.executeInIterations(inputs);
+    }
 }

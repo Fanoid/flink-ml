@@ -18,18 +18,22 @@
 
 package org.apache.flink.ml.common.computation.computation;
 
+import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.ml.common.computation.builder.Data;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 /** Composite computation. */
 public class CompositeComputation implements Computation {
     private final List<Data<?>> starts;
     private final List<Data<?>> ends;
+    private final List<TypeInformation<?>> outTypes;
 
     public CompositeComputation(List<Data<?>> starts, List<Data<?>> ends) {
         this.starts = starts;
         this.ends = ends;
+        outTypes = ends.stream().map(d -> d.type).collect(Collectors.toList());
     }
 
     @Override
@@ -38,7 +42,7 @@ public class CompositeComputation implements Computation {
     }
 
     @Override
-    public int getNumOutputs() {
-        return ends.size();
+    public List<TypeInformation<?>> getOutTypes() {
+        return outTypes;
     }
 }

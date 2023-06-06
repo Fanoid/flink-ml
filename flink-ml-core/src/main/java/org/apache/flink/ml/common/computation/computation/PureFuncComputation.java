@@ -21,6 +21,7 @@ package org.apache.flink.ml.common.computation.computation;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.ml.common.computation.purefunc.FlinkExecutor;
 import org.apache.flink.ml.common.computation.purefunc.FlinkIterationExecutor;
+import org.apache.flink.ml.common.computation.purefunc.MapPartitionPureFunc;
 import org.apache.flink.ml.common.computation.purefunc.MapPureFunc;
 import org.apache.flink.ml.common.computation.purefunc.PureFunc;
 import org.apache.flink.streaming.api.datastream.DataStream;
@@ -31,11 +32,11 @@ import java.util.List;
 /** Computation wrapped from PureFunc. */
 public class PureFuncComputation implements Computation {
     private final PureFunc<?> func;
-    private final TypeInformation<?> outputType;
+    private final TypeInformation<?> outType;
 
-    public PureFuncComputation(PureFunc<?> func, TypeInformation<?> outputType) {
+    public PureFuncComputation(PureFunc<?> func, TypeInformation<?> outType) {
         this.func = func;
-        this.outputType = outputType;
+        this.outType = outType;
     }
 
     @Override
@@ -44,8 +45,8 @@ public class PureFuncComputation implements Computation {
     }
 
     @Override
-    public List<TypeInformation<?>> getOutputTypes() {
-        return Collections.singletonList(outputType);
+    public List<TypeInformation<?>> getOutTypes() {
+        return Collections.singletonList(outType);
     }
 
     @Override
@@ -67,7 +68,12 @@ public class PureFuncComputation implements Computation {
         DataStream<?> input = inputs[0];
         if (func instanceof MapPureFunc) {
             //noinspection unchecked,rawtypes
-            DataStream<?> output = FlinkExecutor.execute(input, (MapPureFunc) func, outputType);
+            DataStream<?> output = FlinkExecutor.execute(input, (MapPureFunc) func, outType);
+            return Collections.singletonList(output);
+        } else if (func instanceof MapPartitionPureFunc) {
+            //noinspection unchecked,rawtypes
+            DataStream<?> output =
+                    FlinkExecutor.execute(input, (MapPartitionPureFunc) func, outType);
             return Collections.singletonList(output);
         } else {
             throw new UnsupportedOperationException(
@@ -81,7 +87,12 @@ public class PureFuncComputation implements Computation {
         if (func instanceof MapPureFunc) {
             //noinspection unchecked,rawtypes
             DataStream<?> output =
-                    FlinkIterationExecutor.execute(input, (MapPureFunc) func, outputType);
+                    FlinkIterationExecutor.execute(input, (MapPureFunc) func, outType);
+            return Collections.singletonList(output);
+        } else if (func instanceof MapPartitionPureFunc) {
+            //noinspection unchecked,rawtypes
+            DataStream<?> output =
+                    FlinkIterationExecutor.execute(input, (MapPartitionPureFunc) func, outType);
             return Collections.singletonList(output);
         } else {
             throw new UnsupportedOperationException(

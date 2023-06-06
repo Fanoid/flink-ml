@@ -21,7 +21,6 @@ package org.apache.flink.ml.common.computation.computation;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.ml.common.computation.execution.Executable;
 
-import java.util.Collections;
 import java.util.List;
 
 /** Computation. */
@@ -29,11 +28,8 @@ public interface Computation extends Executable {
     int getNumInputs();
 
     default int getNumOutputs() {
-        return getOutputTypes().size();
+        return getOutTypes().size();
     }
 
-    default List<TypeInformation<?>> getOutputTypes() {
-        // TODO: fixit.
-        return Collections.emptyList();
-    }
+    List<TypeInformation<?>> getOutTypes();
 }

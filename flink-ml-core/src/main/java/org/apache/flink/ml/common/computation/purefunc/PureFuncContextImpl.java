@@ -27,7 +27,7 @@ public class PureFuncContextImpl implements PureFuncContext {
     private final int numSubtasks;
     private final int subtaskId;
     private final int inputParallelism;
-    private final boolean inIterations;
+    private boolean inIterations;
     private int interation;
 
     public PureFuncContextImpl(int numSubtasks, int subtaskId, int inputParallelism) {
@@ -36,15 +36,6 @@ public class PureFuncContextImpl implements PureFuncContext {
         this.inputParallelism = inputParallelism;
         this.inIterations = false;
         this.interation = 0;
-    }
-
-    public PureFuncContextImpl(
-            int numSubtasks, int subtaskId, int inputParallelism, int iteration) {
-        this.numSubtasks = numSubtasks;
-        this.subtaskId = subtaskId;
-        this.inputParallelism = inputParallelism;
-        this.inIterations = true;
-        this.interation = iteration;
     }
 
     @Override
@@ -72,6 +63,7 @@ public class PureFuncContextImpl implements PureFuncContext {
     }
 
     public void setIteration(int iteration) {
+        this.inIterations = true;
         this.interation = iteration;
     }
 }

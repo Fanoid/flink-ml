@@ -18,6 +18,8 @@
 
 package org.apache.flink.ml.common.computation.computation;
 
+import org.apache.flink.api.common.typeinfo.TypeInformation;
+
 import java.util.List;
 import java.util.Map;
 
@@ -60,5 +62,11 @@ public class IterationComputation implements Computation {
     @Override
     public int getNumOutputs() {
         return outputs.size();
+    }
+
+    @Override
+    public List<TypeInformation<?>> getOutTypes() {
+        // TODO: fixit.
+        return null;
     }
 }
