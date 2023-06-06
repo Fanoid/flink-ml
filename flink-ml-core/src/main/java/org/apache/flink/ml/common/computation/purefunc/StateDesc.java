@@ -39,13 +39,13 @@ import java.util.function.Supplier;
  */
 public class StateDesc<S extends State, T> {
     public final StateDescriptor<S, T> desc;
-    public final SerializedConsumerWithException<S, ?> snapshotFn;
-    public final SerializedConsumerWithException<S, ?> initializeFn;
+    public final SerializedConsumerWithException<S> snapshotFn;
+    public final SerializedConsumerWithException<S> initializeFn;
 
     private StateDesc(
             StateDescriptor<S, T> desc,
-            SerializedConsumerWithException<S, ?> snapshotFn,
-            SerializedConsumerWithException<S, ?> initializeFn) {
+            SerializedConsumerWithException<S> snapshotFn,
+            SerializedConsumerWithException<S> initializeFn) {
         this.desc = desc;
         this.snapshotFn = snapshotFn;
         this.initializeFn = initializeFn;
@@ -53,8 +53,8 @@ public class StateDesc<S extends State, T> {
 
     public static <S extends State, T> StateDesc<S, T> of(
             StateDescriptor<S, T> desc,
-            SerializedConsumerWithException<S, ?> snapshotFn,
-            SerializedConsumerWithException<S, ?> initializeFn) {
+            SerializedConsumerWithException<S> snapshotFn,
+            SerializedConsumerWithException<S> initializeFn) {
         return new StateDesc<>(desc, snapshotFn, initializeFn);
     }
 

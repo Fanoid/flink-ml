@@ -22,7 +22,6 @@ import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.ml.common.computation.computation.Computation;
 import org.apache.flink.ml.common.computation.computation.PureFuncComputation;
-import org.apache.flink.ml.common.computation.purefunc.IterativeMapPureFunc;
 import org.apache.flink.ml.common.computation.purefunc.MapPartitionPureFunc;
 import org.apache.flink.ml.common.computation.purefunc.MapPartitionWithDataPureFunc;
 import org.apache.flink.ml.common.computation.purefunc.MapPureFunc;
@@ -38,7 +37,6 @@ import org.apache.flink.util.Preconditions;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 
 /**
@@ -55,13 +53,9 @@ public class Data<T> {
     }
 
     public static OutputDataList transform(
-            String name,
-            Computation computation,
-            List<TypeInformation<?>> outTypes,
-            Data<?>... inputs) {
+            String name, Computation computation, Data<?>... inputs) {
         Preconditions.checkArgument(computation.getNumInputs() == inputs.length);
-        Preconditions.checkArgument(computation.getNumOutputs() == outTypes.size());
-        return new OutputDataList(Arrays.asList(inputs), name, computation, outTypes);
+        return new OutputDataList(Arrays.asList(inputs), name, computation);
     }
 
     public PartitionedData<T> rebalance() {
@@ -97,15 +91,6 @@ public class Data<T> {
     }
 
     public <R> Data<R> map(String name, MapPureFunc<T, R> mapper, TypeInformation<R> outType) {
-        return transformOneInputPureFunc(name, mapper, outType);
-    }
-
-    public <R> Data<R> map(IterativeMapPureFunc<T, R> mapper, TypeInformation<R> outType) {
-        return map(mapper.getClass().getSimpleName(), mapper, outType);
-    }
-
-    public <R> Data<R> map(
-            String name, IterativeMapPureFunc<T, R> mapper, TypeInformation<R> outType) {
         return transformOneInputPureFunc(name, mapper, outType);
     }
 
@@ -159,12 +144,7 @@ public class Data<T> {
 
     <R> Data<R> transformOneInputPureFunc(
             String name, OneInputPureFunc<T, R> mapper, TypeInformation<R> outType) {
-        return transform(
-                        name,
-                        new PureFuncComputation(mapper),
-                        Collections.singletonList(outType),
-                        this)
-                .get(0);
+        return transform(name, new PureFuncComputation(mapper, outType), this).get(0);
     }
 
     <R, DATA> Data<R> transformTwoInputPureFunc(
@@ -172,13 +152,7 @@ public class Data<T> {
             TwoInputPureFunc<T, DATA, R> mapper,
             TypeInformation<R> outType,
             Data<DATA> data) {
-        return transform(
-                        name,
-                        new PureFuncComputation(mapper),
-                        Collections.singletonList(outType),
-                        this,
-                        data)
-                .get(0);
+        return transform(name, new PureFuncComputation(mapper, outType), this, data).get(0);
     }
 
     public TypeInformation<T> getType() {

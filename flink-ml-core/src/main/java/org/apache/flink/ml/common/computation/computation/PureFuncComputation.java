@@ -18,32 +18,74 @@
 
 package org.apache.flink.ml.common.computation.computation;
 
+import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.ml.common.computation.purefunc.FlinkExecutor;
+import org.apache.flink.ml.common.computation.purefunc.FlinkIterationExecutor;
+import org.apache.flink.ml.common.computation.purefunc.MapPureFunc;
 import org.apache.flink.ml.common.computation.purefunc.PureFunc;
+import org.apache.flink.streaming.api.datastream.DataStream;
+
+import java.util.Collections;
+import java.util.List;
 
 /** Computation wrapped from PureFunc. */
 public class PureFuncComputation implements Computation {
-    private final PureFunc func;
-    private final int numInputs;
-    private final int numOutputs;
+    private final PureFunc<?> func;
+    private final TypeInformation<?> outputType;
 
-    public PureFuncComputation(PureFunc func) {
+    public PureFuncComputation(PureFunc<?> func, TypeInformation<?> outputType) {
         this.func = func;
-        // TODO: calculate it from PureFunc
-        numInputs = 1;
-        numOutputs = 1;
+        this.outputType = outputType;
     }
 
     @Override
     public int getNumInputs() {
-        return numInputs;
+        return func.getNumInputs();
+    }
+
+    @Override
+    public List<TypeInformation<?>> getOutputTypes() {
+        return Collections.singletonList(outputType);
     }
 
     @Override
     public int getNumOutputs() {
-        return numOutputs;
+        return 1;
     }
 
-    public PureFunc getFunc() {
+    public PureFunc<?> getFunc() {
         return func;
+    }
+
+    @Override
+    public List<Iterable<?>> execute(Iterable<?>... inputs) {
+        return func.execute(inputs);
+    }
+
+    @Override
+    public List<DataStream<?>> executeOnFlink(DataStream<?>... inputs) {
+        DataStream<?> input = inputs[0];
+        if (func instanceof MapPureFunc) {
+            //noinspection unchecked,rawtypes
+            DataStream<?> output = FlinkExecutor.execute(input, (MapPureFunc) func, outputType);
+            return Collections.singletonList(output);
+        } else {
+            throw new UnsupportedOperationException(
+                    String.format("Not supported for %s yet.", func.getClass().getSimpleName()));
+        }
+    }
+
+    @Override
+    public List<DataStream<?>> executeInIterations(DataStream<?>... inputs) {
+        DataStream<?> input = inputs[0];
+        if (func instanceof MapPureFunc) {
+            //noinspection unchecked,rawtypes
+            DataStream<?> output =
+                    FlinkIterationExecutor.execute(input, (MapPureFunc) func, outputType);
+            return Collections.singletonList(output);
+        } else {
+            throw new UnsupportedOperationException(
+                    String.format("Not supported for %s yet.", func.getClass().getSimpleName()));
+        }
     }
 }

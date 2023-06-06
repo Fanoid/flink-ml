@@ -28,6 +28,7 @@ import org.apache.flink.ml.common.computation.computation.IterationComputation;
 import org.apache.flink.ml.common.computation.purefunc.MapPureFunc;
 import org.apache.flink.ml.common.computation.purefunc.MapWithDataPureFunc;
 import org.apache.flink.ml.common.computation.purefunc.ReducePureFunc;
+import org.apache.flink.ml.common.computation.purefunc.RichMapPureFunc;
 import org.apache.flink.ml.common.distance.DistanceMeasure;
 import org.apache.flink.ml.linalg.BLAS;
 import org.apache.flink.ml.linalg.DenseVector;
@@ -35,7 +36,7 @@ import org.apache.flink.ml.linalg.Vector;
 import org.apache.flink.ml.linalg.VectorWithNorm;
 import org.apache.flink.ml.linalg.typeinfo.DenseVectorTypeInfo;
 import org.apache.flink.ml.param.Param;
-import org.apache.flink.ml.util.ReadWriteUtils;
+import org.apache.flink.ml.util.ParamUtils;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
@@ -88,7 +89,12 @@ public class KMeans2 implements Estimator<KMeans2, KMeansModel>, KMeansParams<KM
 
         Data<Boolean> endCriteria =
                 newModelData.map(
-                        (value, iteration, out) -> out.collect(iteration >= maxIters),
+                        new RichMapPureFunc<KMeansModelData, Boolean>() {
+                            @Override
+                            public void map(KMeansModelData value, Collector<Boolean> out) {
+                                out.collect(getContext().getIteration() >= maxIters);
+                            }
+                        },
                         Types.BOOLEAN);
 
         Data<KMeansModelData> outputModel =
@@ -152,7 +158,7 @@ public class KMeans2 implements Estimator<KMeans2, KMeansModel>, KMeansParams<KM
 
         Table finalModelDataTable = tEnv.fromDataStream(finalModelData);
         KMeansModel model = new KMeansModel().setModelData(finalModelDataTable);
-        ReadWriteUtils.updateExistingParams(model, paramMap);
+        ParamUtils.updateExistingParams(model, paramMap);
         return model;
     }
 

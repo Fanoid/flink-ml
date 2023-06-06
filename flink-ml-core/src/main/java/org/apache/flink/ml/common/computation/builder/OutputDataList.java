@@ -18,7 +18,6 @@
 
 package org.apache.flink.ml.common.computation.builder;
 
-import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.ml.common.computation.computation.Computation;
 
 import java.util.List;
@@ -28,17 +27,11 @@ public class OutputDataList {
     public final List<Data<?>> inputs;
     public final String name;
     public final Computation computation;
-    public final List<TypeInformation<?>> outTypes;
 
-    public OutputDataList(
-            List<Data<?>> inputs,
-            String name,
-            Computation computation,
-            List<TypeInformation<?>> outTypes) {
+    public OutputDataList(List<Data<?>> inputs, String name, Computation computation) {
         this.name = name;
         this.inputs = inputs;
         this.computation = computation;
-        this.outTypes = outTypes;
     }
 
     public <R> Data<R> get(int index) {

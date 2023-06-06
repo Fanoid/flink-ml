@@ -23,6 +23,9 @@ import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.functions.RichMapFunction;
 import org.apache.flink.api.common.functions.RuntimeContext;
 
+import java.util.Collections;
+import java.util.List;
+
 /**
  * Similar to {@link MapFunction} but with an addition broadcast parameter. Compared to {@link
  * RichMapFunction} with {@link RuntimeContext#getBroadcastVariable}, this interface can be used in
@@ -33,4 +36,9 @@ import org.apache.flink.api.common.functions.RuntimeContext;
  */
 @Experimental
 public abstract class RichMapPureFunc<IN, OUT> extends AbstractRichPureFunc<OUT>
-        implements MapPureFunc<IN, OUT> {}
+        implements MapPureFunc<IN, OUT> {
+    @Override
+    public List<StateDesc<?, ?>> getStateDescs() {
+        return Collections.emptyList();
+    }
+}

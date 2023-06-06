@@ -34,12 +34,6 @@ import org.apache.flink.util.Collector;
  */
 @Experimental
 @FunctionalInterface
-public interface MapWithDataPureFunc<IN, DATA, OUT>
-        extends IterativeMapWithDataPureFunc<IN, DATA, OUT> {
+public interface MapWithDataPureFunc<IN, DATA, OUT> extends TwoInputPureFunc<IN, DATA, OUT> {
     void map(IN value, DATA data, Collector<OUT> out);
-
-    @Override
-    default void map(IN value, DATA data, int iteration, Collector<OUT> out) {
-        map(value, data, out);
-    }
 }

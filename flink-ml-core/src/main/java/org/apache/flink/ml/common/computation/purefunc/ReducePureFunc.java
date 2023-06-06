@@ -32,11 +32,6 @@ import org.apache.flink.api.common.functions.RuntimeContext;
  */
 @Experimental
 @FunctionalInterface
-public interface ReducePureFunc<T> extends IterativeReducePureFunc<T> {
+public interface ReducePureFunc<T> extends OneInputPureFunc<T, T> {
     T reduce(T value1, T value2) throws Exception;
-
-    @Override
-    default T reduce(T value1, T value2, int iteration) throws Exception {
-        return reduce(value1, value2);
-    }
 }

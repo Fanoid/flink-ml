@@ -26,6 +26,6 @@ import java.util.function.Consumer;
  *
  * @param <T> The type of value to be consumed.
  */
-public interface SerializedConsumerWithException<T, E extends Throwable> extends Serializable {
-    void accept(T t) throws E;
+public interface SerializedConsumerWithException<T> extends Serializable {
+    void accept(T t) throws Exception;
 }

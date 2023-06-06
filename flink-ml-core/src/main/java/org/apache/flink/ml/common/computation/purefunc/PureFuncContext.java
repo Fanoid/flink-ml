@@ -28,4 +28,6 @@ public interface PureFuncContext {
     int getSubtaskId();
 
     int getInputParallelism();
+
+    int getIteration();
 }

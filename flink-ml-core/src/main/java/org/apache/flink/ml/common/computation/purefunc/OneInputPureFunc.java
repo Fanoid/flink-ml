@@ -26,4 +26,9 @@ import org.apache.flink.annotation.Experimental;
  * org.apache.flink.api.common.functions.Function}.
  */
 @Experimental
-public interface OneInputPureFunc<IN, OUT> extends PureFunc<OUT> {}
+public interface OneInputPureFunc<IN, OUT> extends PureFunc<OUT> {
+    @Override
+    default int getNumInputs() {
+        return 1;
+    }
+}

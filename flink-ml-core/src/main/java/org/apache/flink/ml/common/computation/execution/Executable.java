@@ -16,22 +16,23 @@
  * limitations under the License.
  */
 
-package org.apache.flink.ml.common.computation.purefunc;
+package org.apache.flink.ml.common.computation.execution;
 
-import org.apache.flink.annotation.Experimental;
-import org.apache.flink.api.common.functions.MapFunction;
-import org.apache.flink.api.common.functions.RichMapFunction;
-import org.apache.flink.api.common.functions.RuntimeContext;
+import org.apache.flink.streaming.api.datastream.DataStream;
 
-/**
- * Similar to {@link MapFunction} but with an addition broadcast parameter. Compared to {@link
- * RichMapFunction} with {@link RuntimeContext#getBroadcastVariable}, this interface can be used in
- * a broader situations since it involves no Flink runtime.
- *
- * @param <T> Type of input/output elements.
- */
-@Experimental
-@FunctionalInterface
-public interface IterativeReducePureFunc<T> extends OneInputPureFunc<T, T> {
-    T reduce(T value1, T value2, int iteration) throws Exception;
+import java.util.List;
+
+/** Executable with local / Flink environment. */
+public interface Executable {
+    default List<Iterable<?>> execute(Iterable<?>... inputs) {
+        throw new UnsupportedOperationException();
+    }
+
+    default List<DataStream<?>> executeOnFlink(DataStream<?>... inputs) {
+        throw new UnsupportedOperationException();
+    }
+
+    default List<DataStream<?>> executeInIterations(DataStream<?>... inputs) {
+        throw new UnsupportedOperationException();
+    }
 }

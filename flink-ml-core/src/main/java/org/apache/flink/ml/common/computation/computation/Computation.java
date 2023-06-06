@@ -18,25 +18,22 @@
 
 package org.apache.flink.ml.common.computation.computation;
 
-import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.ml.common.computation.execution.Executable;
 
+import java.util.Collections;
 import java.util.List;
 
 /** Computation. */
-public interface Computation {
+public interface Computation extends Executable {
     int getNumInputs();
 
-    int getNumOutputs();
-
-    default List<List<?>> execute(List<?>... inputs) {
-        throw new UnsupportedOperationException();
+    default int getNumOutputs() {
+        return getOutputTypes().size();
     }
 
-    default List<DataStream<?>> executeOnFlink(DataStream<?>... inputs) {
-        throw new UnsupportedOperationException();
-    }
-
-    default List<DataStream<?>> executeInIterations(DataStream<?>... inputs) {
-        throw new UnsupportedOperationException();
+    default List<TypeInformation<?>> getOutputTypes() {
+        // TODO: fixit.
+        return Collections.emptyList();
     }
 }
