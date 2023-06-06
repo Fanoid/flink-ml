@@ -23,6 +23,12 @@ import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.functions.RichMapFunction;
 import org.apache.flink.api.common.functions.RuntimeContext;
 import org.apache.flink.util.Collector;
+import org.apache.flink.util.Preconditions;
+
+import org.apache.commons.collections.IteratorUtils;
+
+import java.util.Collections;
+import java.util.List;
 
 /**
  * Similar to {@link MapFunction} but with an addition broadcast parameter. Compared to {@link
@@ -36,4 +42,15 @@ import org.apache.flink.util.Collector;
 @FunctionalInterface
 public interface MapWithDataPureFunc<IN, DATA, OUT> extends TwoInputPureFunc<IN, DATA, OUT> {
     void map(IN value, DATA data, Collector<OUT> out);
+
+    @Override
+    default List<Iterable<?>> execute(Iterable<?>... inputs) {
+        Preconditions.checkArgument(getNumInputs() == inputs.length);
+        //noinspection unchecked
+        Iterable<IN> input = (Iterable<IN>) inputs[0];
+        //noinspection unchecked
+        List<DATA> dataList = IteratorUtils.toList(inputs[1].iterator());
+        Preconditions.checkState(dataList.size() == 1);
+        return Collections.singletonList(IterableExecutor.execute(input, dataList.get(0), this));
+    }
 }

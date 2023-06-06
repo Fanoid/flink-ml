@@ -19,6 +19,9 @@
 package org.apache.flink.ml.common.computation.purefunc;
 
 import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.ml.common.computation.purefunc.FlinkExecutorUtils.ExecuteMapPartitionWithDataPureFuncOperator;
+import org.apache.flink.ml.common.computation.purefunc.FlinkExecutorUtils.ExecuteMapPureFuncOperator;
+import org.apache.flink.ml.common.computation.purefunc.FlinkExecutorUtils.ExecuteMapWithDataPureFuncOperator;
 import org.apache.flink.ml.common.computation.purefunc.FlinkExecutorUtils.ExecutorMapPartitionPureFuncOperator;
 import org.apache.flink.streaming.api.datastream.DataStream;
 
@@ -27,16 +30,40 @@ public class FlinkIterationExecutor {
     public static <IN, OUT> DataStream<OUT> execute(
             DataStream<IN> in, MapPureFunc<IN, OUT> func, TypeInformation<OUT> outType) {
         return in.transform(
-                "ExecuteMap",
-                outType,
-                new FlinkExecutorUtils.ExecutorMapPureFuncOperator<>(func, in.getParallelism()));
+                "ExecuteMap", outType, new ExecuteMapPureFuncOperator<>(func, in.getParallelism()));
+    }
+
+    public static <IN, DATA, OUT> DataStream<OUT> execute(
+            DataStream<IN> in,
+            DataStream<DATA> data,
+            MapWithDataPureFunc<IN, DATA, OUT> func,
+            TypeInformation<OUT> outType) {
+        return in.connect(data)
+                .transform(
+                        "ExecuteMapWithData",
+                        outType,
+                        new ExecuteMapWithDataPureFuncOperator<>(
+                                func, in.getParallelism(), in.getType(), data.getType()));
     }
 
     public static <IN, OUT> DataStream<OUT> execute(
             DataStream<IN> in, MapPartitionPureFunc<IN, OUT> func, TypeInformation<OUT> outType) {
         return in.transform(
-                "ExecuteMap",
+                "ExecuteMapPartition",
                 outType,
                 new ExecutorMapPartitionPureFuncOperator<>(func, in.getParallelism()));
+    }
+
+    public static <IN, DATA, OUT> DataStream<OUT> execute(
+            DataStream<IN> in,
+            DataStream<DATA> data,
+            MapPartitionWithDataPureFunc<IN, DATA, OUT> func,
+            TypeInformation<OUT> outType) {
+        return in.connect(data)
+                .transform(
+                        "ExecuteMapPartitionWithData",
+                        outType,
+                        new ExecuteMapPartitionWithDataPureFuncOperator<>(
+                                func, in.getParallelism(), in.getType(), data.getType()));
     }
 }

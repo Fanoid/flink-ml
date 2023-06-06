@@ -18,16 +18,23 @@
 
 package org.apache.flink.ml.common.computation.purefunc;
 
+import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.iteration.IterationListener;
+import org.apache.flink.iteration.datacache.nonkeyed.ListStateWithCache;
 import org.apache.flink.runtime.state.StateInitializationContext;
 import org.apache.flink.runtime.state.StateSnapshotContext;
 import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
+import org.apache.flink.streaming.api.operators.BoundedMultiInput;
 import org.apache.flink.streaming.api.operators.BoundedOneInput;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
+import org.apache.flink.streaming.api.operators.TwoInputStreamOperator;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.util.Collector;
+import org.apache.flink.util.Preconditions;
 
+import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -196,7 +203,7 @@ class FlinkExecutorUtils {
         }
     }
 
-    static class ExecutorMapPureFuncOperator<IN, OUT> extends AbstractStreamOperator<OUT>
+    static class ExecuteMapPureFuncOperator<IN, OUT> extends AbstractStreamOperator<OUT>
             implements OneInputStreamOperator<IN, OUT>, BoundedOneInput, IterationListener<OUT> {
 
         private final MapPureFunc<IN, OUT> func;
@@ -207,7 +214,7 @@ class FlinkExecutorUtils {
         private transient StateHandler stateHandler;
         private transient PureFuncContextImpl pureFuncContext;
 
-        public ExecutorMapPureFuncOperator(MapPureFunc<IN, OUT> func, int inputParallelism) {
+        public ExecuteMapPureFuncOperator(MapPureFunc<IN, OUT> func, int inputParallelism) {
             this.func = func;
             this.inputParallelism = inputParallelism;
         }
@@ -273,6 +280,265 @@ class FlinkExecutorUtils {
             if (func instanceof RichMapPureFunc) {
                 ((RichMapPureFunc<IN, OUT>) func).close(collector);
             }
+        }
+    }
+
+    static class ExecuteMapWithDataPureFuncOperator<IN, DATA, OUT>
+            extends AbstractStreamOperator<OUT>
+            implements TwoInputStreamOperator<IN, DATA, OUT>,
+                    BoundedMultiInput,
+                    IterationListener<OUT> {
+
+        private final MapWithDataPureFunc<IN, DATA, OUT> func;
+        private final int inputParallelism;
+        private final TypeInformation<IN> inType;
+        private final TypeInformation<DATA> dataType;
+        private transient DATA data;
+        private transient ListStateWithCache<IN> inCache;
+
+        private transient Collector<OUT> collector;
+
+        private transient StateHandler stateHandler;
+        private transient PureFuncContextImpl pureFuncContext;
+
+        public ExecuteMapWithDataPureFuncOperator(
+                MapWithDataPureFunc<IN, DATA, OUT> func,
+                int inputParallelism,
+                TypeInformation<IN> inType,
+                TypeInformation<DATA> dataType) {
+            this.func = func;
+            this.inputParallelism = inputParallelism;
+            this.inType = inType;
+            this.dataType = dataType;
+        }
+
+        @Override
+        public void open() throws Exception {
+            super.open();
+            if (func instanceof RichMapWithDataPureFunc) {
+                pureFuncContext =
+                        new PureFuncContextImpl(
+                                getRuntimeContext().getNumberOfParallelSubtasks(),
+                                getRuntimeContext().getIndexOfThisSubtask(),
+                                inputParallelism);
+                ((RichMapWithDataPureFunc<IN, DATA, OUT>) func).setContext(pureFuncContext);
+                ((RichMapWithDataPureFunc<IN, DATA, OUT>) func).open();
+            }
+            collector = new ConsumerCollector<>(v -> output.collect(new StreamRecord<>(v)));
+        }
+
+        @Override
+        public void onEpochWatermarkIncremented(
+                int epochWatermark, Context context, Collector<OUT> collector) throws Exception {
+            pureFuncContext.setIteration(epochWatermark);
+            if (func instanceof RichMapWithDataPureFunc) {
+                ((RichMapWithDataPureFunc<IN, DATA, OUT>) func).close(collector);
+                ((RichMapWithDataPureFunc<IN, DATA, OUT>) func).open();
+            }
+            data = null;
+            inCache.clear();
+        }
+
+        @Override
+        public void onIterationTerminated(Context context, Collector<OUT> collector)
+                throws Exception {
+            if (func instanceof RichMapWithDataPureFunc) {
+                ((RichMapWithDataPureFunc<IN, DATA, OUT>) func).close(collector);
+            }
+        }
+
+        @Override
+        public void initializeState(StateInitializationContext context) throws Exception {
+            super.initializeState(context);
+
+            inCache =
+                    new ListStateWithCache<>(
+                            inType.createSerializer(getExecutionConfig()),
+                            getContainingTask(),
+                            getRuntimeContext(),
+                            context,
+                            config.getOperatorID());
+
+            if (func instanceof RichMapWithDataPureFunc) {
+                if (null == stateHandler) {
+                    List<StateDesc<?, ?>> stateDescs =
+                            new ArrayList<>(
+                                    ((RichMapWithDataPureFunc<IN, DATA, OUT>) func)
+                                            .getStateDescs());
+                    stateDescs.add(
+                            StateDesc.singleValueState(
+                                    "__data", dataType, null, (v) -> data = v, () -> data));
+                    stateHandler = new StateHandler(stateDescs);
+                }
+                stateHandler.initializeState(context);
+            }
+        }
+
+        @Override
+        public void snapshotState(StateSnapshotContext context) throws Exception {
+            super.snapshotState(context);
+            inCache.snapshotState(context);
+            stateHandler.snapshotState(context);
+        }
+
+        @Override
+        public void processElement1(StreamRecord<IN> element) throws Exception {
+            if (null != data) {
+                func.map(element.getValue(), data, collector);
+            } else {
+                inCache.add(element.getValue());
+            }
+        }
+
+        @Override
+        public void processElement2(StreamRecord<DATA> element) throws Exception {
+            Preconditions.checkState(null == data);
+            data = element.getValue();
+            for (IN value : inCache.get()) {
+                func.map(value, data, collector);
+            }
+            inCache.clear();
+        }
+
+        @Override
+        public void endInput(int inputId) throws Exception {
+            if (1 == inputId) {
+                if (func instanceof RichMapWithDataPureFunc) {
+                    ((RichMapWithDataPureFunc<IN, DATA, OUT>) func).close(collector);
+                }
+            }
+        }
+    }
+
+    static class ExecuteMapPartitionWithDataPureFuncOperator<IN, DATA, OUT>
+            extends AbstractStreamOperator<OUT>
+            implements TwoInputStreamOperator<IN, DATA, OUT>,
+                    BoundedMultiInput,
+                    IterationListener<OUT> {
+        private final MapPartitionWithDataPureFunc<IN, DATA, OUT> func;
+        private final int inputParallelism;
+        private final TypeInformation<IN> inType;
+        private final TypeInformation<DATA> dataType;
+
+        private transient DATA data;
+        private transient ListStateWithCache<IN> inCache;
+
+        private transient InputIterator<IN> inputIterator;
+
+        private transient Collector<OUT> collector;
+
+        private transient StateHandler stateHandler;
+
+        private transient Future<?> future;
+
+        private transient PureFuncContextImpl pureFuncContext;
+
+        public ExecuteMapPartitionWithDataPureFuncOperator(
+                MapPartitionWithDataPureFunc<IN, DATA, OUT> func,
+                int inputParallelism,
+                TypeInformation<IN> inType,
+                TypeInformation<DATA> dataType) {
+            this.func = func;
+            this.inputParallelism = inputParallelism;
+            this.inType = inType;
+            this.dataType = dataType;
+        }
+
+        @Override
+        public void open() throws Exception {
+            super.open();
+            pureFuncContext =
+                    new PureFuncContextImpl(
+                            getRuntimeContext().getNumberOfParallelSubtasks(),
+                            getRuntimeContext().getIndexOfThisSubtask(),
+                            inputParallelism);
+            if (func instanceof RichMapPartitionWithDataPureFunc) {
+                ((RichMapPartitionWithDataPureFunc<IN, DATA, OUT>) func)
+                        .setContext(pureFuncContext);
+                ((RichMapPartitionWithDataPureFunc<IN, DATA, OUT>) func).open();
+            }
+            inputIterator = new InputIterator<>();
+
+            ExecutorService executorService = Executors.newSingleThreadExecutor();
+            collector = new ConsumerCollector<>(v -> output.collect(new StreamRecord<>(v)));
+            future = executorService.submit(() -> func.map(() -> inputIterator, data, collector));
+        }
+
+        @Override
+        public void initializeState(StateInitializationContext context) throws Exception {
+            super.initializeState(context);
+
+            inCache =
+                    new ListStateWithCache<>(
+                            inType.createSerializer(getExecutionConfig()),
+                            getContainingTask(),
+                            getRuntimeContext(),
+                            context,
+                            config.getOperatorID());
+
+            if (null == stateHandler) {
+                List<StateDesc<?, ?>> stateDescs =
+                        new ArrayList<>(
+                                ((RichMapPartitionWithDataPureFunc<IN, DATA, OUT>) func)
+                                        .getStateDescs());
+                stateDescs.add(
+                        StateDesc.singleValueState(
+                                "__data", dataType, null, (v) -> data = v, () -> data));
+                stateHandler = new StateHandler(stateDescs);
+            }
+            stateHandler.initializeState(context);
+        }
+
+        @Override
+        public void snapshotState(StateSnapshotContext context) throws Exception {
+            super.snapshotState(context);
+            inCache.snapshotState(context);
+            stateHandler.snapshotState(context);
+        }
+
+        @Override
+        public void onEpochWatermarkIncremented(
+                int epochWatermark, Context context, Collector<OUT> collector) throws Exception {
+            pureFuncContext.setIteration(epochWatermark);
+            if (func instanceof RichMapPartitionWithDataPureFunc) {
+                ((RichMapPartitionWithDataPureFunc<IN, DATA, OUT>) func).close(collector);
+                ((RichMapPartitionWithDataPureFunc<IN, DATA, OUT>) func).open();
+            }
+        }
+
+        @Override
+        public void onIterationTerminated(Context context, Collector<OUT> collector)
+                throws Exception {
+            if (func instanceof RichMapPartitionWithDataPureFunc) {
+                ((RichMapPartitionWithDataPureFunc<IN, DATA, OUT>) func).close(collector);
+            }
+        }
+
+        @Override
+        public void endInput(int inputId) throws Exception {
+            if (1 == inputId) {
+                inputIterator.end();
+                future.get();
+                if (func instanceof RichMapPartitionWithDataPureFunc) {
+                    ((RichMapPartitionWithDataPureFunc<IN, DATA, OUT>) func).close(collector);
+                }
+            }
+        }
+
+        @Override
+        public void processElement1(StreamRecord<IN> element) throws Exception {
+            inputIterator.add(element.getValue());
+        }
+
+        @Override
+        public void processElement2(StreamRecord<DATA> element) throws Exception {
+            Preconditions.checkState(null == data);
+            // TODO: fixit: data needs to be thread-safe.
+            data = element.getValue();
+            for (IN value : inCache.get()) {
+                inputIterator.add(value);
+            }
+            inCache.clear();
         }
     }
 }
