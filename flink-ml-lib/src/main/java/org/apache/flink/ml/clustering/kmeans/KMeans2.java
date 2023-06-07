@@ -105,7 +105,7 @@ public class KMeans2 implements Estimator<KMeans2, KMeansModel>, KMeansParams<KM
                             }
                         },
                         endCriteria,
-                        newModelData.type);
+                        newModelData.getType());
         return new IterationComputation(
                 new CompositeComputation(
                         Arrays.asList(centroids, points),
@@ -152,7 +152,12 @@ public class KMeans2 implements Estimator<KMeans2, KMeansModel>, KMeansParams<KM
         IterationComputation iterationComputation =
                 makeIterationComputation(
                         getMaxIter(), DistanceMeasure.getInstance(getDistanceMeasure()));
-        List<DataStream<?>> outputs = iterationComputation.executeOnFlink(initCentroids, points);
+        List<DataStream<?>> outputs;
+        try {
+            outputs = iterationComputation.executeOnFlink(Arrays.asList(initCentroids, points));
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
         //noinspection unchecked
         DataStream<KMeansModelData> finalModelData = (DataStream<KMeansModelData>) outputs.get(0);
 

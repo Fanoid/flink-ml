@@ -44,10 +44,15 @@ public interface MapPartitionWithDataPureFunc<IN, DATA, OUT>
     void map(Iterable<IN> values, DATA data, Collector<OUT> out);
 
     @Override
-    default List<Iterable<?>> execute(Iterable<?>... inputs) {
-        Preconditions.checkArgument(getNumInputs() == inputs.length);
+    default List<Iterable<?>> execute(List<Iterable<?>> inputs) {
+        Preconditions.checkArgument(getNumInputs() == inputs.size());
         return Collections.singletonList(
                 IterableExecutor.getInstance()
-                        .executeMapPartitionWithData(inputs[0], inputs[1], this, null));
+                        .executeMapPartitionWithData(
+                                inputs.get(0),
+                                inputs.get(1),
+                                this,
+                                getClass().getSimpleName(),
+                                null));
     }
 }

@@ -22,6 +22,8 @@ import org.apache.flink.annotation.Experimental;
 import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.functions.RichMapFunction;
 import org.apache.flink.api.common.functions.RuntimeContext;
+import org.apache.flink.ml.common.computation.execution.FlinkExecutor;
+import org.apache.flink.ml.common.computation.execution.FlinkIterationExecutor;
 import org.apache.flink.ml.common.computation.execution.IterableExecutor;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.util.Collector;
@@ -44,19 +46,31 @@ public interface MapPartitionPureFunc<IN, OUT> extends OneInputPureFunc<IN, OUT>
     void map(Iterable<IN> values, Collector<OUT> out);
 
     @Override
-    default List<Iterable<?>> execute(Iterable<?>... inputs) {
-        Preconditions.checkArgument(getNumInputs() == inputs.length);
+    default List<Iterable<?>> execute(List<Iterable<?>> inputs) {
+        Preconditions.checkArgument(getNumInputs() == inputs.size());
         return Collections.singletonList(
-                IterableExecutor.getInstance().executeMapPartition(inputs[0], this, null));
+                IterableExecutor.getInstance()
+                        .executeMapPartition(
+                                inputs.get(0), this, getClass().getSimpleName(), null));
     }
 
     @Override
-    default List<DataStream<?>> executeOnFlink(DataStream<?>... inputs) {
-        return OneInputPureFunc.super.executeOnFlink(inputs);
+    default List<DataStream<?>> executeOnFlink(List<DataStream<?>> inputs) {
+        Preconditions.checkArgument(getNumInputs() == inputs.size());
+        //noinspection unchecked
+        return Collections.singletonList(
+                FlinkExecutor.getInstance()
+                        .executeMapPartition(
+                                inputs.get(0), this, getClass().getSimpleName(), null));
     }
 
     @Override
-    default List<DataStream<?>> executeInIterations(DataStream<?>... inputs) {
-        return OneInputPureFunc.super.executeInIterations(inputs);
+    default List<DataStream<?>> executeInIterations(List<DataStream<?>> inputs) {
+        Preconditions.checkArgument(getNumInputs() == inputs.size());
+        //noinspection unchecked
+        return Collections.singletonList(
+                FlinkIterationExecutor.getInstance()
+                        .executeMapPartition(
+                                inputs.get(0), this, getClass().getSimpleName(), null));
     }
 }

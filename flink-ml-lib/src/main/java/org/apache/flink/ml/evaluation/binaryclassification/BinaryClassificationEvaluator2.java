@@ -26,6 +26,7 @@ import org.apache.flink.api.java.tuple.Tuple4;
 import org.apache.flink.ml.api.AlgoOperator;
 import org.apache.flink.ml.common.computation.builder.Data;
 import org.apache.flink.ml.common.computation.computation.CompositeComputation;
+import org.apache.flink.ml.common.computation.computation.Computation;
 import org.apache.flink.ml.common.computation.purefunc.MapPartitionPureFunc;
 import org.apache.flink.ml.common.computation.purefunc.MapPureFunc;
 import org.apache.flink.ml.common.computation.purefunc.MapWithDataPureFunc;
@@ -135,27 +136,24 @@ public class BinaryClassificationEvaluator2
     private static Data<double[]> getBoundaryRange(Data<Tuple3<Double, Boolean, Double>> evalData) {
         Data<double[]> sampleScoreStream =
                 evalData.mapPartition(
+                        "SampleScore",
                         new SampleScoreFunction(),
                         PrimitiveArrayTypeInfo.DOUBLE_PRIMITIVE_ARRAY_TYPE_INFO);
 
         return sampleScoreStream
                 .all()
                 .mapPartition(
+                        "CalcBoundary",
                         new CalcBoundaryRangeFunction(),
                         PrimitiveArrayTypeInfo.DOUBLE_PRIMITIVE_ARRAY_TYPE_INFO);
     }
 
-    @Override
-    public Table[] transform(Table... inputs) {
-        Preconditions.checkArgument(inputs.length == 1);
-        StreamTableEnvironment tEnv =
-                (StreamTableEnvironment) ((TableImpl) inputs[0]).getTableEnvironment();
-        DataStream<Row> input = tEnv.toDataStream(inputs[0]);
-
-        Data<Row> data = Data.source(input.getType());
+    static Computation getCalcAucComputation(
+            TypeInformation<Row> type, String labelCol, String rawPredictionCol, String weightCol) {
+        Data<Row> data = Data.source(type);
         Data<Tuple3<Double, Boolean, Double>> evalData =
                 data.map(
-                        new ParseSample(getLabelCol(), getRawPredictionCol(), getWeightCol()),
+                        new ParseSample(labelCol, rawPredictionCol, weightCol),
                         Types.TUPLE(Types.DOUBLE, Types.BOOLEAN, Types.DOUBLE));
         Data<double[]> boundaryRange = getBoundaryRange(evalData);
 
@@ -210,7 +208,7 @@ public class BinaryClassificationEvaluator2
                 sortEvalData.map(
                         new CalcSampleOrdersPureFunc(),
                         partitionSummariesList,
-                        Types.TUPLE(Types.DOUBLE, Types.BOOLEAN, Types.DOUBLE, Types.INT));
+                        Types.TUPLE(Types.DOUBLE, Types.LONG, Types.BOOLEAN, Types.DOUBLE));
 
         Data<double[]> localAreaUnderROCVariable =
                 dataWithOrders.map(
@@ -238,9 +236,20 @@ public class BinaryClassificationEvaluator2
                         },
                         Types.DOUBLE);
 
-        CompositeComputation aucComputation =
-                new CompositeComputation(
-                        Collections.singletonList(data), Collections.singletonList(areaUnderROC));
+        return new CompositeComputation(
+                Collections.singletonList(data), Collections.singletonList(areaUnderROC));
+    }
+
+    @Override
+    public Table[] transform(Table... inputs) {
+        Preconditions.checkArgument(inputs.length == 1);
+        StreamTableEnvironment tEnv =
+                (StreamTableEnvironment) ((TableImpl) inputs[0]).getTableEnvironment();
+        DataStream<Row> input = tEnv.toDataStream(inputs[0]);
+
+        Computation aucComputation =
+                getCalcAucComputation(
+                        input.getType(), getLabelCol(), getRawPredictionCol(), getWeightCol());
 
         //        Map<String, DataStream<?>> broadcastMap = new HashMap<>();
         //        broadcastMap.put(partitionSummariesKey, partitionSummaries);
@@ -278,7 +287,22 @@ public class BinaryClassificationEvaluator2
         //                                },
         //                        outputTypeInfo);
         //        return new Table[] {tEnv.fromDataStream(evalResult)};
-        return new Table[] {tEnv.fromDataStream(aucComputation.executeOnFlink(input).get(0))};
+
+        DataStream<?> auc;
+        try {
+            auc = aucComputation.executeOnFlink(Collections.singletonList(input)).get(0);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+        DataStream<Row> evalResult =
+                auc.map(
+                        d -> {
+                            Row r = Row.withNames();
+                            r.setField(AREA_UNDER_ROC, d);
+                            return r;
+                        },
+                        Types.ROW_NAMED(new String[] {AREA_UNDER_ROC}, Types.DOUBLE));
+        return new Table[] {tEnv.fromDataStream(evalResult)};
     }
 
     @Override

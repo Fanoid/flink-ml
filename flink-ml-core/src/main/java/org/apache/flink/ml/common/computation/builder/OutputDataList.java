@@ -25,11 +25,9 @@ import java.util.List;
 /** Data list from output of a computation. */
 public class OutputDataList {
     public final List<Data<?>> inputs;
-    public final String name;
     public final Computation computation;
 
-    public OutputDataList(List<Data<?>> inputs, String name, Computation computation) {
-        this.name = name;
+    public OutputDataList(List<Data<?>> inputs, Computation computation) {
         this.inputs = inputs;
         this.computation = computation;
     }

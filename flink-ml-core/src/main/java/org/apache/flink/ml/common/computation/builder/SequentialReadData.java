@@ -37,7 +37,7 @@ public class SequentialReadData<T> extends Data<Iterable<T>> {
     private final Data<T> upstream;
 
     SequentialReadData(Data<T> data) {
-        super(new IterableTypeInfo<>(data.type));
+        super(new IterableTypeInfo<>(data.getType()));
         upstream = data;
     }
 

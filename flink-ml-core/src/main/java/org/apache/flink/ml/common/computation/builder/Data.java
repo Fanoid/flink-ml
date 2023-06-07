@@ -56,10 +56,9 @@ public abstract class Data<T> {
         return new SourceData<>(type);
     }
 
-    public static OutputDataList transform(
-            String name, Computation computation, Data<?>... inputs) {
+    public static OutputDataList transform(Computation computation, Data<?>... inputs) {
         Preconditions.checkArgument(computation.getNumInputs() == inputs.length);
-        return new OutputDataList(Arrays.asList(inputs), name, computation);
+        return new OutputDataList(Arrays.asList(inputs), computation);
     }
 
     public abstract List<Data<?>> getUpstreams();
@@ -93,7 +92,7 @@ public abstract class Data<T> {
     }
 
     public <R> Data<R> map(MapPureFunc<T, R> mapper, TypeInformation<R> outType) {
-        return map(mapper.getClass().getSimpleName(), mapper, outType);
+        return map(mapper.getClass().getName(), mapper, outType);
     }
 
     public <R> Data<R> map(String name, MapPureFunc<T, R> mapper, TypeInformation<R> outType) {
@@ -102,7 +101,7 @@ public abstract class Data<T> {
 
     public <R, DATA> Data<R> map(
             MapWithDataPureFunc<T, DATA, R> mapper, Data<DATA> data, TypeInformation<R> outType) {
-        return map(mapper.getClass().getSimpleName(), mapper, data, outType);
+        return map(mapper.getClass().getName(), mapper, data, outType);
     }
 
     public <R, DATA> Data<R> map(
@@ -114,7 +113,7 @@ public abstract class Data<T> {
     }
 
     public <R> Data<R> mapPartition(MapPartitionPureFunc<T, R> mapper, TypeInformation<R> outType) {
-        return mapPartition(mapper.getClass().getSimpleName(), mapper, outType);
+        return mapPartition(mapper.getClass().getName(), mapper, outType);
     }
 
     public <R> Data<R> mapPartition(
@@ -126,7 +125,7 @@ public abstract class Data<T> {
             MapPartitionWithDataPureFunc<T, DATA, R> mapper,
             Data<DATA> data,
             TypeInformation<R> outType) {
-        return mapPartition(mapper.getClass().getSimpleName(), mapper, data, outType);
+        return mapPartition(mapper.getClass().getName(), mapper, data, outType);
     }
 
     public <R, DATA> Data<R> mapPartition(
@@ -150,7 +149,7 @@ public abstract class Data<T> {
 
     <R> Data<R> transformOneInputPureFunc(
             String name, OneInputPureFunc<T, R> mapper, TypeInformation<R> outType) {
-        return transform(name, new PureFuncComputation(mapper, outType), this).get(0);
+        return transform(new PureFuncComputation(mapper, name, outType), this).get(0);
     }
 
     <R, DATA> Data<R> transformTwoInputPureFunc(
@@ -158,7 +157,7 @@ public abstract class Data<T> {
             TwoInputPureFunc<T, DATA, R> mapper,
             TypeInformation<R> outType,
             Data<DATA> data) {
-        return transform(name, new PureFuncComputation(mapper, outType), this, data).get(0);
+        return transform(new PureFuncComputation(mapper, name, outType), this, data).get(0);
     }
 
     public TypeInformation<T> getType() {
@@ -184,7 +183,9 @@ public abstract class Data<T> {
 
         @Override
         public void close(Collector<T> out) throws Exception {
-            out.collect(reduced);
+            if (null != reduced) {
+                out.collect(reduced);
+            }
         }
 
         @Override

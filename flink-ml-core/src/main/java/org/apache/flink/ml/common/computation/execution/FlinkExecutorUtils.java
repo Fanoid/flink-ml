@@ -44,6 +44,8 @@ import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.Preconditions;
 
+import org.apache.commons.lang3.concurrent.BasicThreadFactory;
+
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -52,6 +54,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 class FlinkExecutorUtils {
     static class ExecutorMapPartitionPureFuncOperator<IN, OUT> extends AbstractStreamOperator<OUT>
@@ -65,6 +69,7 @@ class FlinkExecutorUtils {
 
         private transient StateHandler stateHandler;
 
+        private transient ExecutorService executorService;
         private transient Future<?> future;
 
         private transient PureFuncContextImpl pureFuncContext;
@@ -89,20 +94,27 @@ class FlinkExecutorUtils {
             }
             inputIterator = new InputIterator<>();
 
-            ExecutorService executorService = Executors.newSingleThreadExecutor();
+            BasicThreadFactory factory =
+                    new BasicThreadFactory.Builder()
+                            .namingPattern(getOperatorName() + "-input-thread-%d")
+                            .build();
+
+            executorService = Executors.newSingleThreadExecutor(factory);
             collector = new ConsumerCollector<>(v -> output.collect(new StreamRecord<>(v)));
             future = executorService.submit(() -> func.map(() -> inputIterator, collector));
         }
 
         @Override
-        public void processElement(StreamRecord<IN> element) {
+        public void processElement(StreamRecord<IN> element) throws Exception {
             inputIterator.add(element.getValue());
         }
 
         @Override
         public void endInput() throws Exception {
-            inputIterator.end();
+            inputIterator.end(future);
             future.get();
+            executorService.shutdown();
+            Preconditions.checkState(executorService.isShutdown());
             if (func instanceof RichMapPartitionPureFunc) {
                 ((RichMapPartitionPureFunc<IN, OUT>) func).close(collector);
             }
@@ -163,9 +175,6 @@ class FlinkExecutorUtils {
          */
         private final SynchronousQueue<ValueOrEnd<T>> q;
 
-        // The value to be added which is reused multiple times.
-        private final ValueOrEnd<T> toAdd = new ValueOrEnd<>();
-
         // The next value to return.
         private ValueOrEnd<T> next = null;
 
@@ -199,19 +208,36 @@ class FlinkExecutorUtils {
             return savedValue;
         }
 
-        public void add(T v) {
-            toAdd.v = v;
-            q.add(toAdd);
+        public void add(T v) throws InterruptedException {
+            q.put(ValueOrEnd.of(v));
         }
 
-        public void end() {
-            toAdd.isEnd = true;
-            q.add(toAdd);
+        public void end(Future<?> future) throws Exception {
+            while (!q.offer(ValueOrEnd.end(), 1, TimeUnit.SECONDS)) {
+                try {
+                    future.get(0, TimeUnit.MILLISECONDS);
+                } catch (TimeoutException ignored) {
+                }
+                Preconditions.checkState(!future.isDone());
+            }
         }
 
         static class ValueOrEnd<T> {
-            public boolean isEnd;
-            public T v;
+            public final boolean isEnd;
+            public final T v;
+
+            public ValueOrEnd(T v, boolean isEnd) {
+                this.isEnd = isEnd;
+                this.v = v;
+            }
+
+            public static <T> ValueOrEnd<T> of(T v) {
+                return new ValueOrEnd<>(v, false);
+            }
+
+            public static <T> ValueOrEnd<T> end() {
+                return new ValueOrEnd<>(null, true);
+            }
         }
     }
 
@@ -272,13 +298,14 @@ class FlinkExecutorUtils {
         @Override
         public void initializeState(StateInitializationContext context) throws Exception {
             super.initializeState(context);
-            if (func instanceof RichMapPureFunc) {
-                if (null == stateHandler) {
-                    stateHandler =
-                            new StateHandler(((RichMapPureFunc<IN, OUT>) func).getStateDescs());
+            if (null == stateHandler) {
+                List<StateDesc<?, ?>> stateDescs = new ArrayList<>();
+                if (func instanceof RichMapPureFunc) {
+                    stateDescs.addAll(((RichMapPureFunc<IN, OUT>) func).getStateDescs());
                 }
-                stateHandler.initializeState(context);
+                stateHandler = new StateHandler(stateDescs);
             }
+            stateHandler.initializeState(context);
         }
 
         @Override
@@ -371,19 +398,18 @@ class FlinkExecutorUtils {
                             context,
                             config.getOperatorID());
 
-            if (func instanceof RichMapWithDataPureFunc) {
-                if (null == stateHandler) {
-                    List<StateDesc<?, ?>> stateDescs =
-                            new ArrayList<>(
-                                    ((RichMapWithDataPureFunc<IN, DATA, OUT>) func)
-                                            .getStateDescs());
-                    stateDescs.add(
-                            StateDesc.singleValueState(
-                                    "__data", dataType, null, (v) -> data = v, () -> data));
-                    stateHandler = new StateHandler(stateDescs);
+            if (null == stateHandler) {
+                List<StateDesc<?, ?>> stateDescs = new ArrayList<>();
+                if (func instanceof RichMapWithDataPureFunc) {
+                    stateDescs.addAll(
+                            ((RichMapWithDataPureFunc<IN, DATA, OUT>) func).getStateDescs());
                 }
-                stateHandler.initializeState(context);
+                stateDescs.add(
+                        StateDesc.singleValueState(
+                                "__data", dataType, null, (v) -> data = v, () -> data));
+                stateHandler = new StateHandler(stateDescs);
             }
+            stateHandler.initializeState(context);
         }
 
         @Override
@@ -471,7 +497,11 @@ class FlinkExecutorUtils {
             }
             inputIterator = new InputIterator<>();
 
-            ExecutorService executorService = Executors.newSingleThreadExecutor();
+            BasicThreadFactory factory =
+                    new BasicThreadFactory.Builder()
+                            .namingPattern(getOperatorName() + "-input-thread-%d")
+                            .build();
+            ExecutorService executorService = Executors.newSingleThreadExecutor(factory);
             collector = new ConsumerCollector<>(v -> output.collect(new StreamRecord<>(v)));
             future = executorService.submit(() -> func.map(() -> inputIterator, data, collector));
         }
@@ -529,7 +559,8 @@ class FlinkExecutorUtils {
         @Override
         public void endInput(int inputId) throws Exception {
             if (1 == inputId) {
-                inputIterator.end();
+                Preconditions.checkState(!future.isDone());
+                inputIterator.end(future);
                 future.get();
                 if (func instanceof RichMapPartitionWithDataPureFunc) {
                     ((RichMapPartitionWithDataPureFunc<IN, DATA, OUT>) func).close(collector);

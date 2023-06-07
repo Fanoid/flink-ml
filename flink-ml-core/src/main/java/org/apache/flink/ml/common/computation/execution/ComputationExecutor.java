@@ -33,37 +33,51 @@ import java.util.List;
 
 /** Executor for computations. */
 interface ComputationExecutor<T> {
-    <IN, OUT> T executeMap(T in, MapPureFunc<IN, OUT> func, TypeInformation<OUT> outType);
+    <IN, OUT> T executeMap(
+            T in, MapPureFunc<IN, OUT> func, String name, TypeInformation<OUT> outType);
 
     <IN, DATA, OUT> T executeMapWithData(
-            T in, T data, MapWithDataPureFunc<IN, DATA, OUT> func, TypeInformation<OUT> outType);
+            T in,
+            T data,
+            MapWithDataPureFunc<IN, DATA, OUT> func,
+            String name,
+            TypeInformation<OUT> outType);
 
     <IN, OUT> T executeMapPartition(
-            T in, MapPartitionPureFunc<IN, OUT> func, TypeInformation<OUT> outType);
+            T in, MapPartitionPureFunc<IN, OUT> func, String name, TypeInformation<OUT> outType);
 
     <IN, DATA, OUT> T executeMapPartitionWithData(
             T in,
             T data,
             MapPartitionWithDataPureFunc<IN, DATA, OUT> func,
+            String name,
             TypeInformation<OUT> outType);
 
-    <OUT> T executeOtherPureFunc(List<T> inputs, PureFunc<OUT> func, TypeInformation<OUT> outType);
+    <OUT> T executeOtherPureFunc(
+            List<T> inputs, PureFunc<OUT> func, String name, TypeInformation<OUT> outType)
+            throws Exception;
 
     @SuppressWarnings({"unchecked", "rawtypes"})
-    default T execute(PureFuncComputation computation, List<T> inputs) {
+    default T execute(PureFuncComputation computation, List<T> inputs) throws Exception {
         PureFunc<?> func = computation.getFunc();
+        String name = computation.getName();
         TypeInformation<?> outType = computation.getOutTypes().get(0);
         if (func instanceof MapPureFunc) {
             Preconditions.checkArgument(1 == inputs.size());
-            return (T) executeMap(inputs.get(0), (MapPureFunc) func, outType);
+            return (T) executeMap(inputs.get(0), (MapPureFunc) func, name, outType);
         } else if (func instanceof MapPartitionPureFunc) {
             Preconditions.checkArgument(1 == inputs.size());
-            return (T) executeMapPartition(inputs.get(0), (MapPartitionPureFunc) func, outType);
+            return (T)
+                    executeMapPartition(inputs.get(0), (MapPartitionPureFunc) func, name, outType);
         } else if (func instanceof MapWithDataPureFunc) {
             Preconditions.checkArgument(2 == inputs.size());
             return (T)
                     executeMapWithData(
-                            inputs.get(0), inputs.get(1), (MapWithDataPureFunc) func, outType);
+                            inputs.get(0),
+                            inputs.get(1),
+                            (MapWithDataPureFunc) func,
+                            name,
+                            outType);
         } else if (func instanceof MapPartitionWithDataPureFunc) {
             Preconditions.checkArgument(2 == inputs.size());
             return (T)
@@ -71,9 +85,10 @@ interface ComputationExecutor<T> {
                             inputs.get(0),
                             inputs.get(1),
                             (MapPartitionWithDataPureFunc) func,
+                            name,
                             outType);
         } else {
-            return (T) executeOtherPureFunc(inputs, (PureFunc) func, outType);
+            return (T) executeOtherPureFunc(inputs, (PureFunc) func, name, outType);
         }
     }
 

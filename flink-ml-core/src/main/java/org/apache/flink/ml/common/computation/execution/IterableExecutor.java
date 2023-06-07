@@ -61,7 +61,7 @@ public class IterableExecutor implements ComputationExecutor<Iterable<?>> {
 
     @Override
     public <IN, OUT> Iterable<OUT> executeMap(
-            Iterable<?> in, MapPureFunc<IN, OUT> func, TypeInformation<OUT> outType) {
+            Iterable<?> in, MapPureFunc<IN, OUT> func, String name, TypeInformation<OUT> outType) {
         //noinspection unchecked,rawtypes
         return () -> new MapPureFuncIterator(in, func);
     }
@@ -71,6 +71,7 @@ public class IterableExecutor implements ComputationExecutor<Iterable<?>> {
             Iterable<?> in,
             Iterable<?> data,
             MapWithDataPureFunc<IN, DATA, OUT> func,
+            String name,
             TypeInformation<OUT> outType) {
         List<DATA> dataList = IteratorUtils.toList(data.iterator());
         Preconditions.checkState(dataList.size() == 1);
@@ -80,7 +81,10 @@ public class IterableExecutor implements ComputationExecutor<Iterable<?>> {
 
     @Override
     public <IN, OUT> Iterable<OUT> executeMapPartition(
-            Iterable<?> in, MapPartitionPureFunc<IN, OUT> func, TypeInformation<OUT> outType) {
+            Iterable<?> in,
+            MapPartitionPureFunc<IN, OUT> func,
+            String name,
+            TypeInformation<OUT> outType) {
         //noinspection unchecked,rawtypes
         return () -> new MapPartitionPureFuncIterator(in, func);
     }
@@ -90,6 +94,7 @@ public class IterableExecutor implements ComputationExecutor<Iterable<?>> {
             Iterable<?> in,
             Iterable<?> data,
             MapPartitionWithDataPureFunc<IN, DATA, OUT> func,
+            String name,
             TypeInformation<OUT> outType) {
         List<DATA> dataList = IteratorUtils.toList(data.iterator());
         Preconditions.checkState(dataList.size() == 1);
@@ -99,7 +104,8 @@ public class IterableExecutor implements ComputationExecutor<Iterable<?>> {
 
     @Override
     public <OUT> Iterable<OUT> executeOtherPureFunc(
-            List<Iterable<?>> inputs, PureFunc<OUT> func, TypeInformation<OUT> outType) {
+            List<Iterable<?>> inputs, PureFunc<OUT> func, String name, TypeInformation<OUT> outType)
+            throws Exception {
         return (Iterable<OUT>) func.execute(inputs).get(0);
     }
 
@@ -111,7 +117,8 @@ public class IterableExecutor implements ComputationExecutor<Iterable<?>> {
     private List<List<Iterable<?>>> calcOutputDataListRecords(
             OutputDataList outputDataList,
             Map<Data<?>, List<Iterable<?>>> dataRecordsMap,
-            Map<OutputDataList, List<List<Iterable<?>>>> outputDataListRecordsMap) {
+            Map<OutputDataList, List<List<Iterable<?>>>> outputDataListRecordsMap)
+            throws Exception {
         if (outputDataListRecordsMap.containsKey(outputDataList)) {
             return outputDataListRecordsMap.get(outputDataList);
         }
@@ -121,7 +128,9 @@ public class IterableExecutor implements ComputationExecutor<Iterable<?>> {
                         .map(dataRecordsMap::get)
                         .collect(Collectors.toList());
         List<Iterable<?>> mergedInputRecords =
-                inputsRecords.stream().map(d -> new IterableChain(d)).collect(Collectors.toList());
+                inputsRecords.stream()
+                        .<Iterable<?>>map(d -> new IterableChain(d))
+                        .collect(Collectors.<Iterable<?>>toList());
 
         Computation computation = outputDataList.computation;
         List<Iterable<?>> partitionedInputsRecords = new ArrayList<>(mergedInputRecords);
@@ -221,8 +230,8 @@ public class IterableExecutor implements ComputationExecutor<Iterable<?>> {
 
         return computation.getEnds().stream()
                 .map(dataRecordsMap::get)
-                .map(d -> new IterableChain(d))
-                .collect(Collectors.toList());
+                .<Iterable<?>>map(d -> new IterableChain(d))
+                .collect(Collectors.<Iterable<?>>toList());
     }
 
     private static class IterableChain<T> implements Iterable<T> {

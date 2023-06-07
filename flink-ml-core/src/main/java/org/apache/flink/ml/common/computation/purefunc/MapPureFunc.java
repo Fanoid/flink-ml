@@ -43,9 +43,10 @@ public interface MapPureFunc<IN, OUT> extends OneInputPureFunc<IN, OUT> {
     void map(IN value, Collector<OUT> out) throws Exception;
 
     @Override
-    default List<Iterable<?>> execute(Iterable<?>... inputs) {
-        Preconditions.checkArgument(getNumInputs() == inputs.length);
+    default List<Iterable<?>> execute(List<Iterable<?>> inputs) {
+        Preconditions.checkArgument(getNumInputs() == inputs.size());
         return Collections.singletonList(
-                IterableExecutor.getInstance().executeMap(inputs[0], this, null));
+                IterableExecutor.getInstance()
+                        .executeMap(inputs.get(0), this, getClass().getSimpleName(), null));
     }
 }

@@ -43,10 +43,15 @@ public interface MapWithDataPureFunc<IN, DATA, OUT> extends TwoInputPureFunc<IN,
     void map(IN value, DATA data, Collector<OUT> out);
 
     @Override
-    default List<Iterable<?>> execute(Iterable<?>... inputs) {
-        Preconditions.checkArgument(getNumInputs() == inputs.length);
+    default List<Iterable<?>> execute(List<Iterable<?>> inputs) {
+        Preconditions.checkArgument(getNumInputs() == inputs.size());
         return Collections.singletonList(
                 IterableExecutor.getInstance()
-                        .executeMapWithData(inputs[0], inputs[1], this, null));
+                        .executeMapWithData(
+                                inputs.get(0),
+                                inputs.get(1),
+                                this,
+                                getClass().getSimpleName(),
+                                null));
     }
 }

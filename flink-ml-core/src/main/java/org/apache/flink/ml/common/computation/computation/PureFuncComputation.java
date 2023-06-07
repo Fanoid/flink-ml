@@ -25,17 +25,18 @@ import org.apache.flink.ml.common.computation.execution.IterableExecutor;
 import org.apache.flink.ml.common.computation.purefunc.PureFunc;
 import org.apache.flink.streaming.api.datastream.DataStream;
 
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
 /** Computation wrapped from PureFunc. */
 public class PureFuncComputation implements Computation {
     private final PureFunc<?> func;
+    private final String name;
     private final TypeInformation<?> outType;
 
-    public PureFuncComputation(PureFunc<?> func, TypeInformation<?> outType) {
+    public PureFuncComputation(PureFunc<?> func, String name, TypeInformation<?> outType) {
         this.func = func;
+        this.name = name;
         this.outType = outType;
     }
 
@@ -58,23 +59,27 @@ public class PureFuncComputation implements Computation {
         return func;
     }
 
-    @Override
-    public List<Iterable<?>> execute(Iterable<?>... inputs) {
-        return Collections.singletonList(
-                IterableExecutor.getInstance().execute(this, Arrays.asList(inputs)));
+    public String getName() {
+        return name;
     }
 
     @Override
-    public List<DataStream<?>> executeOnFlink(DataStream<?>... inputs) {
-        //noinspection unchecked
-        return Collections.singletonList(
-                FlinkExecutor.getInstance().execute(this, Arrays.asList(inputs)));
+    public List<Iterable<?>> execute(List<Iterable<?>> inputs) throws Exception {
+        return Collections.singletonList(IterableExecutor.getInstance().execute(this, inputs));
     }
 
     @Override
-    public List<DataStream<?>> executeInIterations(DataStream<?>... inputs) {
-        //noinspection unchecked
+    public List<DataStream<?>> executeOnFlink(List<DataStream<?>> inputs) throws Exception {
+        //noinspection unchecked,rawtypes
         return Collections.singletonList(
-                FlinkIterationExecutor.getInstance().execute(this, Arrays.asList(inputs)));
+                FlinkExecutor.getInstance().execute(this, (List<DataStream>) (List) inputs));
+    }
+
+    @Override
+    public List<DataStream<?>> executeInIterations(List<DataStream<?>> inputs) throws Exception {
+        //noinspection unchecked,rawtypes
+        return Collections.singletonList(
+                FlinkIterationExecutor.getInstance()
+                        .execute(this, (List<DataStream>) (List) (inputs)));
     }
 }

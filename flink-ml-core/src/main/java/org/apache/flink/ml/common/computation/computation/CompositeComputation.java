@@ -20,6 +20,9 @@ package org.apache.flink.ml.common.computation.computation;
 
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.ml.common.computation.builder.Data;
+import org.apache.flink.ml.common.computation.execution.FlinkExecutor;
+import org.apache.flink.ml.common.computation.execution.FlinkIterationExecutor;
+import org.apache.flink.ml.common.computation.execution.IterableExecutor;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.util.Preconditions;
 
@@ -37,7 +40,7 @@ public class CompositeComputation implements Computation {
     public CompositeComputation(List<Data<?>> starts, List<Data<?>> ends) {
         this.starts = starts;
         this.ends = ends;
-        outTypes = ends.stream().map(d -> d.type).collect(Collectors.toList());
+        outTypes = ends.stream().map(Data::getType).collect(Collectors.toList());
         if (!checkValidity()) {
             throw new IllegalArgumentException(
                     "All data in ends must depend only on data in starts.");
@@ -79,18 +82,24 @@ public class CompositeComputation implements Computation {
     }
 
     @Override
-    public List<Iterable<?>> execute(Iterable<?>... inputs) {
-        Preconditions.checkArgument(inputs.length == starts.size());
-        return Computation.super.execute(inputs);
+    public List<Iterable<?>> execute(List<Iterable<?>> inputs) throws Exception {
+        Preconditions.checkArgument(inputs.size() == starts.size());
+        return IterableExecutor.getInstance().execute(this, inputs);
     }
 
     @Override
-    public List<DataStream<?>> executeOnFlink(DataStream<?>... inputs) {
-        return Computation.super.executeOnFlink(inputs);
+    public List<DataStream<?>> executeOnFlink(List<DataStream<?>> inputs) throws Exception {
+        //noinspection unchecked,rawtypes
+        return (List<DataStream<?>>)
+                (List) FlinkExecutor.getInstance().execute(this, (List<DataStream>) (List) inputs);
     }
 
     @Override
-    public List<DataStream<?>> executeInIterations(DataStream<?>... inputs) {
-        return Computation.super.executeInIterations(inputs);
+    public List<DataStream<?>> executeInIterations(List<DataStream<?>> inputs) throws Exception {
+        //noinspection unchecked,rawtypes
+        return (List<DataStream<?>>)
+                (List)
+                        FlinkIterationExecutor.getInstance()
+                                .execute(this, (List<DataStream>) (List) inputs);
     }
 }

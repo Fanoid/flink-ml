@@ -33,7 +33,7 @@ public class RandomReadWriteData<T> extends Data<List<T>> {
     private final Data<T> upstream;
 
     RandomReadWriteData(Data<T> data) {
-        super(new ListTypeInfo<>(data.type));
+        super(new ListTypeInfo<>(data.getType()));
         upstream = data;
     }
 

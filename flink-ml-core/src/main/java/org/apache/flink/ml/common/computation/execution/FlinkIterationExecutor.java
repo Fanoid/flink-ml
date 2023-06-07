@@ -18,88 +18,11 @@
 
 package org.apache.flink.ml.common.computation.execution;
 
-import org.apache.flink.api.common.typeinfo.TypeInformation;
-import org.apache.flink.ml.common.computation.computation.CompositeComputation;
-import org.apache.flink.ml.common.computation.computation.Computation;
-import org.apache.flink.ml.common.computation.purefunc.MapPartitionPureFunc;
-import org.apache.flink.ml.common.computation.purefunc.MapPartitionWithDataPureFunc;
-import org.apache.flink.ml.common.computation.purefunc.MapPureFunc;
-import org.apache.flink.ml.common.computation.purefunc.MapWithDataPureFunc;
-import org.apache.flink.ml.common.computation.purefunc.PureFunc;
-import org.apache.flink.streaming.api.datastream.DataStream;
-
-import java.util.List;
-
 /** ... */
-@SuppressWarnings({"rawtypes", "unchecked"})
-public class FlinkIterationExecutor implements ComputationExecutor<DataStream> {
+public class FlinkIterationExecutor extends FlinkExecutor {
     private static final FlinkIterationExecutor instance = new FlinkIterationExecutor();
 
     public static FlinkIterationExecutor getInstance() {
         return instance;
-    }
-
-    @Override
-    public <IN, OUT> DataStream<OUT> executeMap(
-            DataStream in, MapPureFunc<IN, OUT> func, TypeInformation<OUT> outType) {
-        return in.transform(
-                "ExecuteMap",
-                outType,
-                new FlinkExecutorUtils.ExecuteMapPureFuncOperator(func, in.getParallelism()));
-    }
-
-    @Override
-    public <IN, DATA, OUT> DataStream executeMapWithData(
-            DataStream in,
-            DataStream data,
-            MapWithDataPureFunc<IN, DATA, OUT> func,
-            TypeInformation<OUT> outType) {
-        return in.connect(data)
-                .transform(
-                        "ExecuteMapWithData",
-                        outType,
-                        new FlinkExecutorUtils.ExecuteMapWithDataPureFuncOperator<>(
-                                func, in.getParallelism(), in.getType(), data.getType()));
-    }
-
-    @Override
-    public <IN, OUT> DataStream executeMapPartition(
-            DataStream in, MapPartitionPureFunc<IN, OUT> func, TypeInformation<OUT> outType) {
-        return in.transform(
-                "ExecuteMapPartition",
-                outType,
-                new FlinkExecutorUtils.ExecutorMapPartitionPureFuncOperator<>(
-                        func, in.getParallelism()));
-    }
-
-    @Override
-    public <IN, DATA, OUT> DataStream executeMapPartitionWithData(
-            DataStream in,
-            DataStream data,
-            MapPartitionWithDataPureFunc<IN, DATA, OUT> func,
-            TypeInformation<OUT> outType) {
-        return in.connect(data)
-                .transform(
-                        "ExecuteMapPartitionWithData",
-                        outType,
-                        new FlinkExecutorUtils.ExecuteMapPartitionWithDataPureFuncOperator<>(
-                                func, in.getParallelism(), in.getType(), data.getType()));
-    }
-
-    @Override
-    public <OUT> DataStream<OUT> executeOtherPureFunc(
-            List<DataStream> inputs, PureFunc<OUT> func, TypeInformation<OUT> outType) {
-        return (DataStream<OUT>) func.executeOnFlink((List<DataStream<?>>) (List) inputs).get(0);
-    }
-
-    @Override
-    public List<DataStream> execute(CompositeComputation computation, List<DataStream> inputs)
-            throws Exception {
-        return null;
-    }
-
-    @Override
-    public List<DataStream> execute(Computation computation, List<DataStream> inputs) {
-        return null;
     }
 }
