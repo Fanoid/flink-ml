@@ -19,8 +19,14 @@
 package org.apache.flink.ml.common.computation.execution;
 
 import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.api.java.functions.KeySelector;
+import org.apache.flink.ml.common.computation.builder.Data;
+import org.apache.flink.ml.common.computation.builder.OutputData;
+import org.apache.flink.ml.common.computation.builder.OutputDataList;
+import org.apache.flink.ml.common.computation.builder.PartitionStrategy;
+import org.apache.flink.ml.common.computation.builder.PartitionedData;
+import org.apache.flink.ml.common.computation.computation.CompositeComputation;
 import org.apache.flink.ml.common.computation.computation.Computation;
-import org.apache.flink.ml.common.computation.computation.PureFuncComputation;
 import org.apache.flink.ml.common.computation.execution.FlinkExecutorUtils.ExecuteMapPartitionWithDataPureFuncOperator;
 import org.apache.flink.ml.common.computation.execution.FlinkExecutorUtils.ExecuteMapPureFuncOperator;
 import org.apache.flink.ml.common.computation.execution.FlinkExecutorUtils.ExecuteMapWithDataPureFuncOperator;
@@ -31,8 +37,12 @@ import org.apache.flink.ml.common.computation.purefunc.MapPureFunc;
 import org.apache.flink.ml.common.computation.purefunc.MapWithDataPureFunc;
 import org.apache.flink.ml.common.computation.purefunc.PureFunc;
 import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.util.Preconditions;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 /** ... */
 @SuppressWarnings({"rawtypes", "unchecked"})
@@ -91,12 +101,99 @@ public class FlinkExecutor implements ComputationExecutor<DataStream> {
     @Override
     public <OUT> DataStream<OUT> executeOtherPureFunc(
             List<DataStream> inputs, PureFunc<OUT> func, TypeInformation<OUT> outType) {
-        return (DataStream<OUT>) func.executeOnFlink(inputs.toArray(new DataStream[0])).get(0);
+        return (DataStream<OUT>) func.executeOnFlink((List<DataStream<?>>) (List) inputs).get(0);
+    }
+
+    private List<DataStream<?>> calcOutputDataListRecords(
+            OutputDataList outputDataList,
+            Map<Data<?>, DataStream<?>> dataRecordsMap,
+            Map<OutputDataList, List<DataStream<?>>> outputDataListRecordsMap) {
+        if (outputDataListRecordsMap.containsKey(outputDataList)) {
+            return outputDataListRecordsMap.get(outputDataList);
+        }
+        List<DataStream<?>> inputsRecords =
+                outputDataList.inputs.stream()
+                        .map(dataRecordsMap::get)
+                        .collect(Collectors.toList());
+        Computation computation = outputDataList.computation;
+        List<DataStream<?>> outputsRecords = computation.executeOnFlink(inputsRecords);
+        outputDataListRecordsMap.put(outputDataList, outputsRecords);
+        return outputsRecords;
+    }
+
+    private DataStream<?> calcDataRecords(
+            Data<?> data,
+            Map<Data<?>, DataStream<?>> dataRecordsMap,
+            Map<OutputDataList, List<DataStream<?>>> outputDataListRecordsMap)
+            throws Exception {
+        if (dataRecordsMap.containsKey(data)) {
+            return dataRecordsMap.get(data);
+        }
+
+        List<Data<?>> upstreams = data.getUpstreams();
+        for (Data<?> upstream : upstreams) {
+            calcDataRecords(upstream, dataRecordsMap, outputDataListRecordsMap);
+        }
+
+        if (data instanceof OutputData) {
+            OutputData<?> outputData = (OutputData<?>) data;
+            OutputDataList outputDataList = outputData.dataList;
+            List<DataStream<?>> outputDataListRecords =
+                    calcOutputDataListRecords(
+                            outputDataList, dataRecordsMap, outputDataListRecordsMap);
+            DataStream<?> outputRecords = outputDataListRecords.get(outputData.index);
+            dataRecordsMap.put(data, outputRecords);
+        } else if (data instanceof PartitionedData) {
+            PartitionedData<?> partitionedData = (PartitionedData<?>) data;
+            PartitionStrategy strategy = partitionedData.getPartitionStrategy();
+
+            DataStream<?> upstreamRecords = dataRecordsMap.get(data.getUpstreams().get(0));
+            DataStream<?> records;
+            switch (strategy) {
+                case ALL:
+                    records = upstreamRecords.map(d -> d).setParallelism(1);
+                    break;
+                case BROADCAST:
+                    records = upstreamRecords.broadcast();
+                    break;
+                case REBALANCE:
+                    records = upstreamRecords.rebalance();
+                    break;
+                case GROUP_BY_KEY:
+                    KeySelector keySelector = partitionedData.getKeySelector();
+                    records = upstreamRecords.keyBy(keySelector);
+                    break;
+                default:
+                    throw new IllegalStateException("Unexpected value: " + strategy);
+            }
+            dataRecordsMap.put(data, records);
+        } else {
+            Preconditions.checkState(1 == upstreams.size());
+            dataRecordsMap.put(data, dataRecordsMap.get(data.getUpstreams().get(0)));
+        }
+        return dataRecordsMap.get(data);
     }
 
     @Override
-    public DataStream execute(PureFuncComputation computation, List<DataStream> inputs) {
-        return null;
+    public List<DataStream> execute(CompositeComputation computation, List<DataStream> inputs)
+            throws Exception {
+        Preconditions.checkArgument(computation.getNumInputs() == inputs.size());
+
+        // DataStream<?> is used to represent records of a Data, as there could be partitioned
+        // data.
+        Map<Data<?>, DataStream<?>> dataRecordsMap = new HashMap<>();
+        Map<OutputDataList, List<DataStream<?>>> outputDataListRecordsMap = new HashMap<>();
+
+        List<Data<?>> starts = computation.getStarts();
+        for (int i = 0; i < computation.getNumInputs(); i += 1) {
+            dataRecordsMap.put(starts.get(i), inputs.get(i));
+        }
+
+        for (Data<?> end : computation.getEnds()) {
+            calcDataRecords(end, dataRecordsMap, outputDataListRecordsMap);
+        }
+
+        return computation.getEnds().stream().map(dataRecordsMap::get).collect(Collectors.toList());
     }
 
     @Override

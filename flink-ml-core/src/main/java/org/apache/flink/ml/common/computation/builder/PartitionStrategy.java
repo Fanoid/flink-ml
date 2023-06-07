@@ -18,6 +18,7 @@
 
 package org.apache.flink.ml.common.computation.builder;
 
+/** Partition strategy. */
 public enum PartitionStrategy {
     ALL,
     BROADCAST,

@@ -24,15 +24,15 @@ import java.util.List;
 
 /** Executable with local / Flink environment. */
 public interface Executable {
-    default List<Iterable<?>> execute(Iterable<?>... inputs) {
+    default List<Iterable<?>> execute(List<Iterable<?>> inputs) {
         throw new UnsupportedOperationException();
     }
 
-    default List<DataStream<?>> executeOnFlink(DataStream<?>... inputs) {
+    default List<DataStream<?>> executeOnFlink(List<DataStream<?>> inputs) {
         throw new UnsupportedOperationException();
     }
 
-    default List<DataStream<?>> executeInIterations(DataStream<?>... inputs) {
+    default List<DataStream<?>> executeInIterations(List<DataStream<?>> inputs) {
         throw new UnsupportedOperationException();
     }
 }

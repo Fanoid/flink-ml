@@ -16,30 +16,11 @@
  * limitations under the License.
  */
 
-package org.apache.flink.ml.common.computation.builder;
+package org.apache.flink.ml.common.computation.execution;
 
-import org.apache.flink.api.common.typeinfo.TypeInformation;
-
-import java.util.List;
-
-/**
- * Data from output of a computation.
- *
- * @param <T> The type of elements in this data.
- */
-public class OutputData<T> extends Data<T> {
-    public final OutputDataList dataList;
-    public final int index;
-
-    public OutputData(OutputDataList dataList, int index) {
-        //noinspection unchecked
-        super((TypeInformation<T>) dataList.computation.getOutTypes().get(index));
-        this.dataList = dataList;
-        this.index = index;
-    }
-
+public class PartitionedRecords<T, CONTAINER> implements Records<T, CONTAINER> {
     @Override
-    public List<Data<?>> getUpstreams() {
-        return dataList.inputs;
+    public CONTAINER get() {
+        return null;
     }
 }

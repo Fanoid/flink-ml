@@ -19,6 +19,13 @@
 package org.apache.flink.ml.common.computation.execution;
 
 import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.api.java.functions.KeySelector;
+import org.apache.flink.ml.common.computation.builder.Data;
+import org.apache.flink.ml.common.computation.builder.OutputData;
+import org.apache.flink.ml.common.computation.builder.OutputDataList;
+import org.apache.flink.ml.common.computation.builder.PartitionStrategy;
+import org.apache.flink.ml.common.computation.builder.PartitionedData;
+import org.apache.flink.ml.common.computation.computation.CompositeComputation;
 import org.apache.flink.ml.common.computation.computation.Computation;
 import org.apache.flink.ml.common.computation.purefunc.ConsumerCollector;
 import org.apache.flink.ml.common.computation.purefunc.MapPartitionPureFunc;
@@ -30,14 +37,20 @@ import org.apache.flink.util.Collector;
 import org.apache.flink.util.Preconditions;
 
 import org.apache.commons.collections.IteratorUtils;
+import org.apache.commons.collections.iterators.IteratorChain;
 
 import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Queue;
+import java.util.stream.Collectors;
 
 /** Executor with {@link Iterable} as inputs and outputs. */
-@SuppressWarnings("unchecked")
+@SuppressWarnings({"unchecked"})
 public class IterableExecutor implements ComputationExecutor<Iterable<?>> {
 
     private static final IterableExecutor instance = new IterableExecutor();
@@ -93,6 +106,138 @@ public class IterableExecutor implements ComputationExecutor<Iterable<?>> {
     @Override
     public List<Iterable<?>> execute(Computation computation, List<Iterable<?>> inputs) {
         return null;
+    }
+
+    private List<List<Iterable<?>>> calcOutputDataListRecords(
+            OutputDataList outputDataList,
+            Map<Data<?>, List<Iterable<?>>> dataRecordsMap,
+            Map<OutputDataList, List<List<Iterable<?>>>> outputDataListRecordsMap) {
+        if (outputDataListRecordsMap.containsKey(outputDataList)) {
+            return outputDataListRecordsMap.get(outputDataList);
+        }
+
+        List<List<Iterable<?>>> inputsRecords =
+                outputDataList.inputs.stream()
+                        .map(dataRecordsMap::get)
+                        .collect(Collectors.toList());
+        List<Iterable<?>> mergedInputRecords =
+                inputsRecords.stream().map(d -> new IterableChain(d)).collect(Collectors.toList());
+
+        Computation computation = outputDataList.computation;
+        List<Iterable<?>> partitionedInputsRecords = new ArrayList<>(mergedInputRecords);
+
+        List<List<Iterable<?>>> outputsRecords = new ArrayList<>(computation.getNumOutputs());
+        for (int i = 0; i < computation.getNumOutputs(); i += 1) {
+            outputsRecords.set(i, new ArrayList<>());
+        }
+
+        // Assume only first input is applied partition-wise, other inputs are applied as a
+        // whole.
+        // TODO: support other partitioned inputs.
+        for (Iterable<?> partitionedFirstInput : inputsRecords.get(0)) {
+            partitionedInputsRecords.set(0, partitionedFirstInput);
+            List<Iterable<?>> partitionedOutputsRecords =
+                    computation.execute(partitionedInputsRecords);
+            for (int i = 0; i < partitionedOutputsRecords.size(); i++) {
+                outputsRecords.get(i).add(partitionedOutputsRecords.get(i));
+            }
+        }
+
+        outputDataListRecordsMap.put(outputDataList, outputsRecords);
+        return outputsRecords;
+    }
+
+    private List<Iterable<?>> calcDataRecords(
+            Data<?> data,
+            Map<Data<?>, List<Iterable<?>>> dataRecordsMap,
+            Map<OutputDataList, List<List<Iterable<?>>>> outputDataListRecordsMap)
+            throws Exception {
+        if (dataRecordsMap.containsKey(data)) {
+            return dataRecordsMap.get(data);
+        }
+
+        List<Data<?>> upstreams = data.getUpstreams();
+        for (Data<?> upstream : upstreams) {
+            calcDataRecords(upstream, dataRecordsMap, outputDataListRecordsMap);
+        }
+
+        if (data instanceof OutputData) {
+            OutputData<?> outputData = (OutputData<?>) data;
+            OutputDataList outputDataList = outputData.dataList;
+            List<List<Iterable<?>>> outputDataListRecords =
+                    calcOutputDataListRecords(
+                            outputDataList, dataRecordsMap, outputDataListRecordsMap);
+            List<Iterable<?>> outputRecords = outputDataListRecords.get(outputData.index);
+            dataRecordsMap.put(data, outputRecords);
+        } else if (data instanceof PartitionedData) {
+            PartitionedData<?> partitionedData = (PartitionedData<?>) data;
+            PartitionStrategy strategy = partitionedData.getPartitionStrategy();
+            IterableChain<?> mergedInputIterable =
+                    new IterableChain(dataRecordsMap.get(data.getUpstreams().get(0)));
+            if (strategy.equals(PartitionStrategy.GROUP_BY_KEY)) {
+                KeySelector keySelector = partitionedData.getKeySelector();
+                Map<Object, List> partitions = new HashMap<>();
+                for (Object v : mergedInputIterable) {
+                    Object key = keySelector.getKey(v);
+                    if (!partitions.containsKey(key)) {
+                        partitions.put(key, new ArrayList<>());
+                    }
+                    partitions.get(key).add(v);
+                }
+                List<Iterable<?>> partitionedRecords =
+                        partitions.values().stream()
+                                .map(d -> (Iterable<?>) d)
+                                .collect(Collectors.toList());
+                dataRecordsMap.put(data, partitionedRecords);
+            } else {
+                dataRecordsMap.put(data, Collections.singletonList(mergedInputIterable));
+            }
+            return null;
+        } else {
+            Preconditions.checkState(1 == upstreams.size());
+            dataRecordsMap.put(data, dataRecordsMap.get(data.getUpstreams().get(0)));
+        }
+        return dataRecordsMap.get(data);
+    }
+
+    @Override
+    public List<Iterable<?>> execute(CompositeComputation computation, List<Iterable<?>> inputs)
+            throws Exception {
+        Preconditions.checkArgument(computation.getNumInputs() == inputs.size());
+
+        // List<Iterable<?>> is used to represent records of a Data, as there could be partitioned
+        // data.
+        Map<Data<?>, List<Iterable<?>>> dataRecordsMap = new HashMap<>();
+        Map<OutputDataList, List<List<Iterable<?>>>> outputDataListRecordsMap = new HashMap<>();
+
+        List<Data<?>> starts = computation.getStarts();
+        for (int i = 0; i < computation.getNumInputs(); i += 1) {
+            dataRecordsMap.put(starts.get(i), Collections.singletonList(inputs.get(i)));
+        }
+
+        for (Data<?> end : computation.getEnds()) {
+            calcDataRecords(end, dataRecordsMap, outputDataListRecordsMap);
+        }
+
+        return computation.getEnds().stream()
+                .map(dataRecordsMap::get)
+                .map(d -> new IterableChain(d))
+                .collect(Collectors.toList());
+    }
+
+    private static class IterableChain<T> implements Iterable<T> {
+
+        private final List<Iterable<T>> iterables;
+
+        private IterableChain(List<Iterable<T>> iterables) {
+            this.iterables = iterables;
+        }
+
+        @Override
+        public Iterator<T> iterator() {
+            return new IteratorChain(
+                    iterables.stream().map(Iterable::iterator).toArray(Iterator[]::new));
+        }
     }
 
     static class MapPureFuncIterator<OUT, IN> implements Iterator<OUT> {

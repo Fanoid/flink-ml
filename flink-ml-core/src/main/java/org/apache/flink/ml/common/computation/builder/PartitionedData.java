@@ -20,13 +20,16 @@ package org.apache.flink.ml.common.computation.builder;
 
 import org.apache.flink.api.java.functions.KeySelector;
 
+import java.util.Collections;
+import java.util.List;
+
 /**
  * Represents a dataset with partition strategy.
  *
  * @param <T> The type of record.
  */
 public class PartitionedData<T> extends Data<T> {
-    public final PartitionStrategy partitionStrategy;
+    private final PartitionStrategy partitionStrategy;
 
     private final Data<T> upstream;
     private final KeySelector<T, ?> keySelector;
@@ -37,9 +40,22 @@ public class PartitionedData<T> extends Data<T> {
 
     <K> PartitionedData(
             Data<T> data, PartitionStrategy partitionStrategy, KeySelector<T, K> keySelector) {
-        super(data.type);
+        super(data.getType());
         this.upstream = data;
         this.partitionStrategy = partitionStrategy;
         this.keySelector = keySelector;
+    }
+
+    @Override
+    public List<Data<?>> getUpstreams() {
+        return Collections.singletonList(upstream);
+    }
+
+    public PartitionStrategy getPartitionStrategy() {
+        return partitionStrategy;
+    }
+
+    public KeySelector<T, ?> getKeySelector() {
+        return keySelector;
     }
 }

@@ -20,26 +20,21 @@ package org.apache.flink.ml.common.computation.builder;
 
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 
+import java.util.Collections;
 import java.util.List;
 
 /**
- * Data from output of a computation.
+ * Represents data which acts as sources, i.e., not derived from others.
  *
- * @param <T> The type of elements in this data.
+ * @param <T> The type of record.
  */
-public class OutputData<T> extends Data<T> {
-    public final OutputDataList dataList;
-    public final int index;
-
-    public OutputData(OutputDataList dataList, int index) {
-        //noinspection unchecked
-        super((TypeInformation<T>) dataList.computation.getOutTypes().get(index));
-        this.dataList = dataList;
-        this.index = index;
+public class SourceData<T> extends Data<T> {
+    public SourceData(TypeInformation<T> type) {
+        super(type);
     }
 
     @Override
     public List<Data<?>> getUpstreams() {
-        return dataList.inputs;
+        return Collections.emptyList();
     }
 }

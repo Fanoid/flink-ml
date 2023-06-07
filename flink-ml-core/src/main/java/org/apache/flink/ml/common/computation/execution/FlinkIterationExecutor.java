@@ -19,8 +19,8 @@
 package org.apache.flink.ml.common.computation.execution;
 
 import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.ml.common.computation.computation.CompositeComputation;
 import org.apache.flink.ml.common.computation.computation.Computation;
-import org.apache.flink.ml.common.computation.computation.PureFuncComputation;
 import org.apache.flink.ml.common.computation.purefunc.MapPartitionPureFunc;
 import org.apache.flink.ml.common.computation.purefunc.MapPartitionWithDataPureFunc;
 import org.apache.flink.ml.common.computation.purefunc.MapPureFunc;
@@ -89,11 +89,12 @@ public class FlinkIterationExecutor implements ComputationExecutor<DataStream> {
     @Override
     public <OUT> DataStream<OUT> executeOtherPureFunc(
             List<DataStream> inputs, PureFunc<OUT> func, TypeInformation<OUT> outType) {
-        return (DataStream<OUT>) func.executeOnFlink(inputs.toArray(new DataStream[0])).get(0);
+        return (DataStream<OUT>) func.executeOnFlink((List<DataStream<?>>) (List) inputs).get(0);
     }
 
     @Override
-    public DataStream execute(PureFuncComputation computation, List<DataStream> inputs) {
+    public List<DataStream> execute(CompositeComputation computation, List<DataStream> inputs)
+            throws Exception {
         return null;
     }
 

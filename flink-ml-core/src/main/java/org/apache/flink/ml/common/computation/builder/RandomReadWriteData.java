@@ -20,6 +20,7 @@ package org.apache.flink.ml.common.computation.builder;
 
 import org.apache.flink.api.java.typeutils.ListTypeInfo;
 
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -28,7 +29,16 @@ import java.util.List;
  * @param <T> The type of record.
  */
 public class RandomReadWriteData<T> extends Data<List<T>> {
+
+    private final Data<T> upstream;
+
     RandomReadWriteData(Data<T> data) {
         super(new ListTypeInfo<>(data.type));
+        upstream = data;
+    }
+
+    @Override
+    public List<Data<?>> getUpstreams() {
+        return Collections.singletonList(upstream);
     }
 }

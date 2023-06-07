@@ -152,7 +152,7 @@ public class BinaryClassificationEvaluator2
                 (StreamTableEnvironment) ((TableImpl) inputs[0]).getTableEnvironment();
         DataStream<Row> input = tEnv.toDataStream(inputs[0]);
 
-        Data<Row> data = new Data<>(input.getType());
+        Data<Row> data = Data.source(input.getType());
         Data<Tuple3<Double, Boolean, Double>> evalData =
                 data.map(
                         new ParseSample(getLabelCol(), getRawPredictionCol(), getWeightCol()),
@@ -203,7 +203,7 @@ public class BinaryClassificationEvaluator2
                             }
                             out.collect(l);
                         },
-                        Types.LIST(partitionSummaries.type));
+                        Types.LIST(partitionSummaries.getType()));
 
         /* Sorts global data. Output Tuple4 : <score, order, isPositive, weight>. */
         Data<Tuple4<Double, Long, Boolean, Double>> dataWithOrders =

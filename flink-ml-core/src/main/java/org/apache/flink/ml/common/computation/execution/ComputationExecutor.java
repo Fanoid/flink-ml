@@ -19,6 +19,7 @@
 package org.apache.flink.ml.common.computation.execution;
 
 import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.ml.common.computation.computation.CompositeComputation;
 import org.apache.flink.ml.common.computation.computation.Computation;
 import org.apache.flink.ml.common.computation.computation.PureFuncComputation;
 import org.apache.flink.ml.common.computation.purefunc.MapPartitionPureFunc;
@@ -75,6 +76,8 @@ interface ComputationExecutor<T> {
             return (T) executeOtherPureFunc(inputs, (PureFunc) func, outType);
         }
     }
+
+    List<T> execute(CompositeComputation computation, List<T> inputs) throws Exception;
 
     List<T> execute(Computation computation, List<T> inputs);
 }

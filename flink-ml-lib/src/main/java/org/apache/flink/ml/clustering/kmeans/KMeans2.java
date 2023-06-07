@@ -59,8 +59,8 @@ public class KMeans2 implements Estimator<KMeans2, KMeansModel>, KMeansParams<KM
     public static IterationComputation makeIterationComputation(
             int maxIters, DistanceMeasure distanceMeasure) {
         Data<DenseVector[]> centroids =
-                new Data<>(Types.OBJECT_ARRAY(DenseVectorTypeInfo.INSTANCE));
-        Data<DenseVector> points = new Data<>(DenseVectorTypeInfo.INSTANCE);
+                Data.source(Types.OBJECT_ARRAY(DenseVectorTypeInfo.INSTANCE));
+        Data<DenseVector> points = Data.source(DenseVectorTypeInfo.INSTANCE);
 
         Data<VectorWithNorm> pointsWithNorm =
                 points.map(

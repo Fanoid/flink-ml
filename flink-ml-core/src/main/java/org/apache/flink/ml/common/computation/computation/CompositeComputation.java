@@ -23,7 +23,9 @@ import org.apache.flink.ml.common.computation.builder.Data;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.util.Preconditions;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /** Composite computation. */
@@ -36,6 +38,29 @@ public class CompositeComputation implements Computation {
         this.starts = starts;
         this.ends = ends;
         outTypes = ends.stream().map(d -> d.type).collect(Collectors.toList());
+        if (!checkValidity()) {
+            throw new IllegalArgumentException(
+                    "All data in ends must depend only on data in starts.");
+        }
+    }
+
+    private static boolean checkUpStreams(Data<?> data, Set<Data<?>> validSet) {
+        if (validSet.contains(data)) {
+            return true;
+        }
+        boolean valid = data.getUpstreams().stream().allMatch(d -> checkUpStreams(d, validSet));
+        if (valid) {
+            validSet.add(data);
+        }
+        return valid;
+    }
+
+    public List<Data<?>> getStarts() {
+        return starts;
+    }
+
+    public List<Data<?>> getEnds() {
+        return ends;
     }
 
     @Override
@@ -46,6 +71,11 @@ public class CompositeComputation implements Computation {
     @Override
     public List<TypeInformation<?>> getOutTypes() {
         return outTypes;
+    }
+
+    private boolean checkValidity() {
+        Set<Data<?>> validSet = new HashSet<>(starts);
+        return ends.stream().allMatch(d -> checkUpStreams(d, validSet));
     }
 
     @Override

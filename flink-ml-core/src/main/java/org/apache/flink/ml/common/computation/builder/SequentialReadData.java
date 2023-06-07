@@ -22,6 +22,9 @@ import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 
+import java.util.Collections;
+import java.util.List;
+
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
@@ -30,8 +33,17 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * @param <T> The type of record.
  */
 public class SequentialReadData<T> extends Data<Iterable<T>> {
+
+    private final Data<T> upstream;
+
     SequentialReadData(Data<T> data) {
         super(new IterableTypeInfo<>(data.type));
+        upstream = data;
+    }
+
+    @Override
+    public List<Data<?>> getUpstreams() {
+        return Collections.singletonList(upstream);
     }
 
     static final class IterableTypeInfo<T> extends TypeInformation<Iterable<T>> {

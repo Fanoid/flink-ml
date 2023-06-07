@@ -44,12 +44,16 @@ import java.util.List;
  *
  * @param <T> The type of record.
  */
-public class Data<T> {
+public abstract class Data<T> {
 
-    public final TypeInformation<T> type;
+    private final TypeInformation<T> type;
 
-    public Data(TypeInformation<T> type) {
+    Data(TypeInformation<T> type) {
         this.type = type;
+    }
+
+    public static <T> SourceData<T> source(TypeInformation<T> type) {
+        return new SourceData<>(type);
     }
 
     public static OutputDataList transform(
@@ -57,6 +61,8 @@ public class Data<T> {
         Preconditions.checkArgument(computation.getNumInputs() == inputs.length);
         return new OutputDataList(Arrays.asList(inputs), name, computation);
     }
+
+    public abstract List<Data<?>> getUpstreams();
 
     public PartitionedData<T> rebalance() {
         return new PartitionedData<>(this, PartitionStrategy.REBALANCE);
