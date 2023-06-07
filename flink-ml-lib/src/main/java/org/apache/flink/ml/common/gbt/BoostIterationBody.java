@@ -26,6 +26,7 @@ import org.apache.flink.api.java.tuple.Tuple5;
 import org.apache.flink.iteration.DataStreamList;
 import org.apache.flink.iteration.IterationBody;
 import org.apache.flink.iteration.IterationBodyResult;
+import org.apache.flink.ml.common.computation.computation.Computation;
 import org.apache.flink.ml.common.gbt.defs.BoostingStrategy;
 import org.apache.flink.ml.common.gbt.defs.Histogram;
 import org.apache.flink.ml.common.gbt.defs.Split;
@@ -43,13 +44,14 @@ import org.apache.flink.ml.common.sharedobjects.ItemDescriptor;
 import org.apache.flink.ml.common.sharedobjects.SharedObjectsBody;
 import org.apache.flink.ml.common.sharedobjects.SharedObjectsStreamOperator;
 import org.apache.flink.ml.common.sharedobjects.SharedObjectsUtils;
-import org.apache.flink.ml.evaluation.binaryclassification.EvalIterationUtils;
+import org.apache.flink.ml.evaluation.binaryclassification.BinaryClassificationEvaluator2;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.types.Row;
 import org.apache.flink.util.OutputTag;
 
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -128,8 +130,17 @@ class BoostIterationBody implements IterationBody {
                         Types.ROW_NAMED(
                                 new String[] {labelCol, probCol}, Types.DOUBLE, Types.DOUBLE),
                         getLabelPredOp);
+
+        Computation aucComputation =
+                BinaryClassificationEvaluator2.getCalcAucComputation(
+                        trainLabelPred.getType(), labelCol, probCol, null);
+
         DataStream<Row> trainEvalResults =
-                EvalIterationUtils.eval(trainLabelPred, labelCol, probCol, null);
+                aucComputation
+                        .executeOnFlink(Collections.singletonList(trainLabelPred))
+                        .get(0)
+                        .map(Row::of);
+
         trainEvalResults =
                 trainEvalResults
                         .broadcast()

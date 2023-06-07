@@ -92,27 +92,31 @@ class FlinkExecutorUtils {
                 ((RichMapPartitionPureFunc<IN, OUT>) func).setContext(pureFuncContext);
                 ((RichMapPartitionPureFunc<IN, OUT>) func).open();
             }
-            inputIterator = new InputIterator<>();
 
             BasicThreadFactory factory =
                     new BasicThreadFactory.Builder()
                             .namingPattern(getOperatorName() + "-input-thread-%d")
                             .build();
-
             executorService = Executors.newSingleThreadExecutor(factory);
-            collector = new ConsumerCollector<>(v -> output.collect(new StreamRecord<>(v)));
-            future = executorService.submit(() -> func.map(() -> inputIterator, collector));
+            collector = null;
         }
 
         @Override
         public void processElement(StreamRecord<IN> element) throws Exception {
+            if (null == inputIterator) {
+                inputIterator = new InputIterator<>();
+                collector = new ConsumerCollector<>(v -> output.collect(new StreamRecord<>(v)));
+                future = executorService.submit(() -> func.map(() -> inputIterator, collector));
+            }
             inputIterator.add(element.getValue());
         }
 
         @Override
         public void endInput() throws Exception {
-            inputIterator.end(future);
-            future.get();
+            if (null != inputIterator) {
+                inputIterator.end(future);
+                future.get();
+            }
             executorService.shutdown();
             Preconditions.checkState(executorService.isShutdown());
             if (func instanceof RichMapPartitionPureFunc) {
@@ -142,9 +146,16 @@ class FlinkExecutorUtils {
         @Override
         public void onEpochWatermarkIncremented(
                 int epochWatermark, Context context, Collector<OUT> collector) throws Exception {
-            pureFuncContext.setIteration(epochWatermark);
             if (func instanceof RichMapPartitionPureFunc) {
                 ((RichMapPartitionPureFunc<IN, OUT>) func).close(collector);
+            }
+            if (null != inputIterator) {
+                inputIterator.end(future);
+                future.get();
+                inputIterator = null;
+            }
+            pureFuncContext.setIteration(epochWatermark);
+            if (func instanceof RichMapPartitionPureFunc) {
                 ((RichMapPartitionPureFunc<IN, OUT>) func).open();
             }
         }
@@ -155,6 +166,8 @@ class FlinkExecutorUtils {
             if (func instanceof RichMapPartitionPureFunc) {
                 ((RichMapPartitionPureFunc<IN, OUT>) func).close(collector);
             }
+            executorService.shutdown();
+            Preconditions.checkState(executorService.isShutdown());
         }
     }
 
@@ -204,6 +217,7 @@ class FlinkExecutorUtils {
                 throw new NoSuchElementException();
             }
             T savedValue = next.v;
+            Preconditions.checkNotNull(savedValue);
             next = getNext();
             return savedValue;
         }
@@ -280,8 +294,8 @@ class FlinkExecutorUtils {
         @Override
         public void onEpochWatermarkIncremented(
                 int epochWatermark, Context context, Collector<OUT> collector) throws Exception {
-            pureFuncContext.setIteration(epochWatermark);
             if (func instanceof RichMapPureFunc) {
+                pureFuncContext.setIteration(epochWatermark);
                 ((RichMapPureFunc<IN, OUT>) func).close(collector);
                 ((RichMapPureFunc<IN, OUT>) func).open();
             }
@@ -369,8 +383,8 @@ class FlinkExecutorUtils {
         @Override
         public void onEpochWatermarkIncremented(
                 int epochWatermark, Context context, Collector<OUT> collector) throws Exception {
-            pureFuncContext.setIteration(epochWatermark);
             if (func instanceof RichMapWithDataPureFunc) {
+                pureFuncContext.setIteration(epochWatermark);
                 ((RichMapWithDataPureFunc<IN, DATA, OUT>) func).close(collector);
                 ((RichMapWithDataPureFunc<IN, DATA, OUT>) func).open();
             }

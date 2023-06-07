@@ -64,19 +64,19 @@ public class PureFuncComputation implements Computation {
     }
 
     @Override
-    public List<Iterable<?>> execute(List<Iterable<?>> inputs) throws Exception {
+    public List<Iterable<?>> execute(List<Iterable<?>> inputs) {
         return Collections.singletonList(IterableExecutor.getInstance().execute(this, inputs));
     }
 
     @Override
-    public List<DataStream<?>> executeOnFlink(List<DataStream<?>> inputs) throws Exception {
+    public List<DataStream<?>> executeOnFlink(List<DataStream<?>> inputs) {
         //noinspection unchecked,rawtypes
         return Collections.singletonList(
                 FlinkExecutor.getInstance().execute(this, (List<DataStream>) (List) inputs));
     }
 
     @Override
-    public List<DataStream<?>> executeInIterations(List<DataStream<?>> inputs) throws Exception {
+    public List<DataStream<?>> executeInIterations(List<DataStream<?>> inputs) {
         //noinspection unchecked,rawtypes
         return Collections.singletonList(
                 FlinkIterationExecutor.getInstance()

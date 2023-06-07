@@ -104,8 +104,10 @@ public class IterableExecutor implements ComputationExecutor<Iterable<?>> {
 
     @Override
     public <OUT> Iterable<OUT> executeOtherPureFunc(
-            List<Iterable<?>> inputs, PureFunc<OUT> func, String name, TypeInformation<OUT> outType)
-            throws Exception {
+            List<Iterable<?>> inputs,
+            PureFunc<OUT> func,
+            String name,
+            TypeInformation<OUT> outType) {
         return (Iterable<OUT>) func.execute(inputs).get(0);
     }
 
@@ -117,8 +119,7 @@ public class IterableExecutor implements ComputationExecutor<Iterable<?>> {
     private List<List<Iterable<?>>> calcOutputDataListRecords(
             OutputDataList outputDataList,
             Map<Data<?>, List<Iterable<?>>> dataRecordsMap,
-            Map<OutputDataList, List<List<Iterable<?>>>> outputDataListRecordsMap)
-            throws Exception {
+            Map<OutputDataList, List<List<Iterable<?>>>> outputDataListRecordsMap) {
         if (outputDataListRecordsMap.containsKey(outputDataList)) {
             return outputDataListRecordsMap.get(outputDataList);
         }
@@ -159,8 +160,7 @@ public class IterableExecutor implements ComputationExecutor<Iterable<?>> {
     private List<Iterable<?>> calcDataRecords(
             Data<?> data,
             Map<Data<?>, List<Iterable<?>>> dataRecordsMap,
-            Map<OutputDataList, List<List<Iterable<?>>>> outputDataListRecordsMap)
-            throws Exception {
+            Map<OutputDataList, List<List<Iterable<?>>>> outputDataListRecordsMap) {
         if (dataRecordsMap.containsKey(data)) {
             return dataRecordsMap.get(data);
         }
@@ -187,7 +187,12 @@ public class IterableExecutor implements ComputationExecutor<Iterable<?>> {
                 KeySelector keySelector = partitionedData.getKeySelector();
                 Map<Object, List> partitions = new HashMap<>();
                 for (Object v : mergedInputIterable) {
-                    Object key = keySelector.getKey(v);
+                    Object key;
+                    try {
+                        key = keySelector.getKey(v);
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
                     if (!partitions.containsKey(key)) {
                         partitions.put(key, new ArrayList<>());
                     }
@@ -210,8 +215,7 @@ public class IterableExecutor implements ComputationExecutor<Iterable<?>> {
     }
 
     @Override
-    public List<Iterable<?>> execute(CompositeComputation computation, List<Iterable<?>> inputs)
-            throws Exception {
+    public List<Iterable<?>> execute(CompositeComputation computation, List<Iterable<?>> inputs) {
         Preconditions.checkArgument(computation.getNumInputs() == inputs.size());
 
         // List<Iterable<?>> is used to represent records of a Data, as there could be partitioned

@@ -54,11 +54,10 @@ interface ComputationExecutor<T> {
             TypeInformation<OUT> outType);
 
     <OUT> T executeOtherPureFunc(
-            List<T> inputs, PureFunc<OUT> func, String name, TypeInformation<OUT> outType)
-            throws Exception;
+            List<T> inputs, PureFunc<OUT> func, String name, TypeInformation<OUT> outType);
 
     @SuppressWarnings({"unchecked", "rawtypes"})
-    default T execute(PureFuncComputation computation, List<T> inputs) throws Exception {
+    default T execute(PureFuncComputation computation, List<T> inputs) {
         PureFunc<?> func = computation.getFunc();
         String name = computation.getName();
         TypeInformation<?> outType = computation.getOutTypes().get(0);

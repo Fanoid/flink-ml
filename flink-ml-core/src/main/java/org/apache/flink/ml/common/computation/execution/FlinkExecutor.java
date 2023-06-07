@@ -105,16 +105,17 @@ public class FlinkExecutor implements ComputationExecutor<DataStream> {
 
     @Override
     public <OUT> DataStream<OUT> executeOtherPureFunc(
-            List<DataStream> inputs, PureFunc<OUT> func, String name, TypeInformation<OUT> outType)
-            throws Exception {
+            List<DataStream> inputs,
+            PureFunc<OUT> func,
+            String name,
+            TypeInformation<OUT> outType) {
         return (DataStream<OUT>) func.executeOnFlink((List<DataStream<?>>) (List) inputs).get(0);
     }
 
     private List<DataStream<?>> calcOutputDataListRecords(
             OutputDataList outputDataList,
             Map<Data<?>, DataStream<?>> dataRecordsMap,
-            Map<OutputDataList, List<DataStream<?>>> outputDataListRecordsMap)
-            throws Exception {
+            Map<OutputDataList, List<DataStream<?>>> outputDataListRecordsMap) {
         if (outputDataListRecordsMap.containsKey(outputDataList)) {
             return outputDataListRecordsMap.get(outputDataList);
         }
@@ -131,8 +132,7 @@ public class FlinkExecutor implements ComputationExecutor<DataStream> {
     private DataStream<?> calcDataRecords(
             Data<?> data,
             Map<Data<?>, DataStream<?>> dataRecordsMap,
-            Map<OutputDataList, List<DataStream<?>>> outputDataListRecordsMap)
-            throws Exception {
+            Map<OutputDataList, List<DataStream<?>>> outputDataListRecordsMap) {
         if (dataRecordsMap.containsKey(data)) {
             return dataRecordsMap.get(data);
         }
@@ -182,8 +182,7 @@ public class FlinkExecutor implements ComputationExecutor<DataStream> {
     }
 
     @Override
-    public List<DataStream> execute(CompositeComputation computation, List<DataStream> inputs)
-            throws Exception {
+    public List<DataStream> execute(CompositeComputation computation, List<DataStream> inputs) {
         Preconditions.checkArgument(computation.getNumInputs() == inputs.size());
 
         // DataStream<?> is used to represent records of a Data, as there could be partitioned

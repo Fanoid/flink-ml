@@ -148,7 +148,7 @@ public class BinaryClassificationEvaluator2
                         PrimitiveArrayTypeInfo.DOUBLE_PRIMITIVE_ARRAY_TYPE_INFO);
     }
 
-    static Computation getCalcAucComputation(
+    public static Computation getCalcAucComputation(
             TypeInformation<Row> type, String labelCol, String rawPredictionCol, String weightCol) {
         Data<Row> data = Data.source(type);
         Data<Tuple3<Double, Boolean, Double>> evalData =
@@ -332,6 +332,11 @@ public class BinaryClassificationEvaluator2
         private double score;
 
         @Override
+        public void open() {
+            accValue = null;
+        }
+
+        @Override
         public void map(Tuple4<Double, Long, Boolean, Double> value, Collector<double[]> out) {
             if (accValue == null) {
                 accValue = new double[4];
@@ -385,17 +390,22 @@ public class BinaryClassificationEvaluator2
         @Override
         public void open() throws Exception {
             defaultV = new BinarySummary(getContext().getSubtaskId(), -Double.MAX_VALUE, 0, 0);
-            summary = defaultV;
+            summary = null;
         }
 
         @Override
         public void map(Tuple3<Double, Boolean, Double> value, Collector<BinarySummary> out) {
+            if (null == summary) {
+                summary = defaultV;
+            }
             updateBinarySummary(summary, value);
         }
 
         @Override
         public void close(Collector<BinarySummary> out) throws Exception {
-            out.collect(summary);
+            if (null != summary) {
+                out.collect(summary);
+            }
         }
 
         @Override
@@ -404,7 +414,7 @@ public class BinaryClassificationEvaluator2
                     StateDesc.singleValueState(
                             "summaryState",
                             TypeInformation.of(BinarySummary.class),
-                            defaultV,
+                            null,
                             (v) -> summary = v,
                             () -> summary));
         }
@@ -426,6 +436,11 @@ public class BinaryClassificationEvaluator2
         private long[] countValues;
         private long startIndex;
         private long total;
+
+        @Override
+        public void open() {
+            countValues = null;
+        }
 
         @Override
         public void map(
