@@ -26,7 +26,7 @@ import java.util.List;
 /**
  * Represents a dataset with partition strategy.
  *
- * @param <T> The type of record.
+ * @param <T> The type of records.
  */
 public class PartitionedData<T> extends Data<T> {
     private final PartitionStrategy partitionStrategy;
@@ -57,5 +57,21 @@ public class PartitionedData<T> extends Data<T> {
 
     public KeySelector<T, ?> getKeySelector() {
         return keySelector;
+    }
+
+    /** Partition strategy. */
+    public enum PartitionStrategy {
+
+        // Records are processed in a single partition.
+        ALL,
+
+        // Records are duplicated in all partitions.
+        BROADCAST,
+
+        // Records are redistributed in partitions.
+        REBALANCE,
+
+        // Records are grouped by keys.
+        GROUP_BY_KEY
     }
 }

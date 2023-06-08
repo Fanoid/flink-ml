@@ -24,11 +24,12 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Represents data which acts as sources, i.e., not derived from others.
+ * Represents data acting as sources, i.e., not derived from others.
  *
- * @param <T> The type of record.
+ * @param <T> The type of records.
  */
 public class SourceData<T> extends Data<T> {
+
     public SourceData(TypeInformation<T> type) {
         super(type);
     }

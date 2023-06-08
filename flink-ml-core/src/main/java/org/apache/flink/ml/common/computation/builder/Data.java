@@ -42,7 +42,7 @@ import java.util.List;
 /**
  * Represents a dataset of multiple records of type T.
  *
- * @param <T> The type of record.
+ * @param <T> The type of records.
  */
 public abstract class Data<T> {
 
@@ -52,41 +52,98 @@ public abstract class Data<T> {
         this.type = type;
     }
 
+    /**
+     * Creates a {@link SourceData}.
+     *
+     * @param type The type information of records.
+     * @return An instance of {@link SourceData}.
+     * @param <T> The type of records.
+     */
     public static <T> SourceData<T> source(TypeInformation<T> type) {
         return new SourceData<>(type);
     }
 
+    /**
+     * Gets the outputs data by applying inputs to a computation.
+     *
+     * @param computation The computation.
+     * @param inputs The inputs.
+     * @return The outputs.
+     */
     public static OutputDataList transform(Computation computation, Data<?>... inputs) {
         Preconditions.checkArgument(computation.getNumInputs() == inputs.length);
         return new OutputDataList(Arrays.asList(inputs), computation);
     }
 
+    /**
+     * Gets the upstreams of current data, i.e. those data being dependent.
+     *
+     * @return The upstreams.
+     */
     public abstract List<Data<?>> getUpstreams();
 
+    /**
+     * Applies rebalance strategy to current data.
+     *
+     * @return The rebalanced data.
+     */
     public PartitionedData<T> rebalance() {
-        return new PartitionedData<>(this, PartitionStrategy.REBALANCE);
+        return new PartitionedData<>(this, PartitionedData.PartitionStrategy.REBALANCE);
     }
 
+    /**
+     * Applies all strategy to current data.
+     *
+     * @return The single partitioned data.
+     */
     public PartitionedData<T> all() {
-        return new PartitionedData<>(this, PartitionStrategy.ALL);
+        return new PartitionedData<>(this, PartitionedData.PartitionStrategy.ALL);
     }
 
+    /**
+     * Applies broadcast strategy to current data.
+     *
+     * @return The broadcast data.
+     */
     public PartitionedData<T> broadcast() {
-        return new PartitionedData<>(this, PartitionStrategy.BROADCAST);
+        return new PartitionedData<>(this, PartitionedData.PartitionStrategy.BROADCAST);
     }
 
+    /**
+     * Applies group-by strategy to current data.
+     *
+     * @param keySelector The function to get key.
+     * @return The partitioned data.
+     * @param <K> The type of the key.
+     */
     public <K> PartitionedData<T> groupByKey(KeySelector<T, K> keySelector) {
-        return new PartitionedData<>(this, PartitionStrategy.GROUP_BY_KEY, keySelector);
+        return new PartitionedData<>(
+                this, PartitionedData.PartitionStrategy.GROUP_BY_KEY, keySelector);
     }
 
+    /**
+     * Gets a cached data with sequential reads.
+     *
+     * @return The cached data.
+     */
     public SequentialReadData<T> cacheWithSequentialRead() {
         return new SequentialReadData<>(this);
     }
 
+    /**
+     * Gets a cached data with random reads.
+     *
+     * @return The cached data.
+     */
     public RandomReadData<T> cacheWithRandomRead() {
         return new RandomReadData<>(this);
     }
 
+    /**
+     * Gets a cached data with random reads and writes.
+     *
+     * @return The cached data.
+     */
     public RandomReadWriteData<T> cacheWithRandomReadWrite() {
         return new RandomReadWriteData<>(this);
     }

@@ -19,11 +19,12 @@
 package org.apache.flink.ml.common.computation.builder;
 
 import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.ml.common.computation.computation.Computation;
 
 import java.util.List;
 
 /**
- * Data from output of a computation.
+ * Data from one output of a {@link Computation}.
  *
  * @param <T> The type of elements in this data.
  */

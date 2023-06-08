@@ -28,9 +28,9 @@ import java.util.List;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
- * Represents a dataset with partition strategy.
+ * Represents a cached dataset for sequential reads.
  *
- * @param <T> The type of record.
+ * @param <T> The type of records.
  */
 public class SequentialReadData<T> extends Data<Iterable<T>> {
 
@@ -46,6 +46,12 @@ public class SequentialReadData<T> extends Data<Iterable<T>> {
         return Collections.singletonList(upstream);
     }
 
+    /**
+     * A phantom subclass of {@link TypeInformation} to pass the type system, which will not be used
+     * by Flink.
+     *
+     * @param <T> The type of records.
+     */
     static final class IterableTypeInfo<T> extends TypeInformation<Iterable<T>> {
 
         private static final long serialVersionUID = 1L;

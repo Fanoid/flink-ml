@@ -22,7 +22,7 @@ import org.apache.flink.ml.common.computation.computation.Computation;
 
 import java.util.List;
 
-/** Data list from output of a computation. */
+/** Data from outputs of a {@link Computation}. */
 public class OutputDataList {
     public final List<Data<?>> inputs;
     public final Computation computation;

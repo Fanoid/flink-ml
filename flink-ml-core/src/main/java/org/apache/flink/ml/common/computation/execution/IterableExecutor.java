@@ -23,7 +23,6 @@ import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.ml.common.computation.builder.Data;
 import org.apache.flink.ml.common.computation.builder.OutputData;
 import org.apache.flink.ml.common.computation.builder.OutputDataList;
-import org.apache.flink.ml.common.computation.builder.PartitionStrategy;
 import org.apache.flink.ml.common.computation.builder.PartitionedData;
 import org.apache.flink.ml.common.computation.computation.CompositeComputation;
 import org.apache.flink.ml.common.computation.computation.Computation;
@@ -182,10 +181,10 @@ public class IterableExecutor implements ComputationExecutor<Iterable<?>> {
             dataRecordsMap.put(data, outputRecords);
         } else if (data instanceof PartitionedData) {
             PartitionedData<?> partitionedData = (PartitionedData<?>) data;
-            PartitionStrategy strategy = partitionedData.getPartitionStrategy();
+            PartitionedData.PartitionStrategy strategy = partitionedData.getPartitionStrategy();
             IterableChain<?> mergedInputIterable =
                     new IterableChain(dataRecordsMap.get(data.getUpstreams().get(0)));
-            if (strategy.equals(PartitionStrategy.GROUP_BY_KEY)) {
+            if (strategy.equals(PartitionedData.PartitionStrategy.GROUP_BY_KEY)) {
                 KeySelector keySelector = partitionedData.getKeySelector();
                 Map<Object, List> partitions = new HashMap<>();
                 for (Object v : mergedInputIterable) {

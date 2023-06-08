@@ -24,9 +24,9 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Represents a dataset with partition strategy.
+ * Represents a cached dataset for random reads.
  *
- * @param <T> The type of record.
+ * @param <T> The type of records.
  */
 public class RandomReadData<T> extends Data<List<T>> {
 

@@ -23,7 +23,6 @@ import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.ml.common.computation.builder.Data;
 import org.apache.flink.ml.common.computation.builder.OutputData;
 import org.apache.flink.ml.common.computation.builder.OutputDataList;
-import org.apache.flink.ml.common.computation.builder.PartitionStrategy;
 import org.apache.flink.ml.common.computation.builder.PartitionedData;
 import org.apache.flink.ml.common.computation.computation.CompositeComputation;
 import org.apache.flink.ml.common.computation.computation.Computation;
@@ -152,7 +151,7 @@ public class FlinkExecutor implements ComputationExecutor<DataStream> {
             dataRecordsMap.put(data, outputRecords);
         } else if (data instanceof PartitionedData) {
             PartitionedData<?> partitionedData = (PartitionedData<?>) data;
-            PartitionStrategy strategy = partitionedData.getPartitionStrategy();
+            PartitionedData.PartitionStrategy strategy = partitionedData.getPartitionStrategy();
 
             DataStream<?> upstreamRecords = dataRecordsMap.get(data.getUpstreams().get(0));
             DataStream<?> records;
