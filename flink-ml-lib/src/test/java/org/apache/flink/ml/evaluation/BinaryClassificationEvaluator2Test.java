@@ -18,6 +18,8 @@
 
 package org.apache.flink.ml.evaluation;
 
+import org.apache.flink.ml.common.computation.computation.Computation;
+import org.apache.flink.ml.common.datastream.TableUtils;
 import org.apache.flink.ml.evaluation.binaryclassification.BinaryClassificationEvaluator2;
 import org.apache.flink.ml.evaluation.binaryclassification.BinaryClassificationEvaluatorParams;
 import org.apache.flink.ml.linalg.SparseVector;
@@ -36,6 +38,7 @@ import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 import static org.junit.Assert.assertArrayEquals;
@@ -179,9 +182,6 @@ public class BinaryClassificationEvaluator2Test extends AbstractTestBase {
                                 BinaryClassificationEvaluatorParams.AREA_UNDER_ROC);
         Table evalResult = eval.transform(inputDataTable)[0];
         List<Row> results = IteratorUtils.toList(evalResult.execute().collect());
-        for (Row row : results) {
-            System.out.println(row);
-        }
         assertArrayEquals(
                 new String[] {
                     //                    BinaryClassificationEvaluatorParams.AREA_UNDER_PR,
@@ -192,6 +192,25 @@ public class BinaryClassificationEvaluator2Test extends AbstractTestBase {
         Row result = results.get(0);
         for (int i = 0; i < EXPECTED_DATA.length; ++i) {
             assertEquals(EXPECTED_DATA[i], result.getFieldAs(i), EPS);
+        }
+    }
+
+    @Test
+    public void testEvaluateLocal() {
+        BinaryClassificationEvaluator2 eval = new BinaryClassificationEvaluator2();
+        List<Row> input = IteratorUtils.toList(inputDataTable.execute().collect());
+
+        Computation aucComputation =
+                BinaryClassificationEvaluator2.getCalcAucComputation(
+                        TableUtils.getRowTypeInfo(inputDataTable.getResolvedSchema()),
+                        eval.getLabelCol(),
+                        eval.getRawPredictionCol(),
+                        eval.getWeightCol());
+        //noinspection unchecked
+        Iterable<Double> aucIterable =
+                (Iterable<Double>) aucComputation.execute(Collections.singletonList(input)).get(0);
+        for (Double v : aucIterable) {
+            assertEquals(EXPECTED_DATA[0], v, EPS);
         }
     }
 

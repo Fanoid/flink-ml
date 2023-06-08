@@ -33,6 +33,8 @@ import org.apache.flink.ml.common.computation.purefunc.MapPartitionWithDataPureF
 import org.apache.flink.ml.common.computation.purefunc.MapPureFunc;
 import org.apache.flink.ml.common.computation.purefunc.MapWithDataPureFunc;
 import org.apache.flink.ml.common.computation.purefunc.PureFunc;
+import org.apache.flink.ml.common.computation.purefunc.PureFuncContextImpl;
+import org.apache.flink.ml.common.computation.purefunc.RichPureFunc;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.Preconditions;
 
@@ -138,7 +140,7 @@ public class IterableExecutor implements ComputationExecutor<Iterable<?>> {
 
         List<List<Iterable<?>>> outputsRecords = new ArrayList<>(computation.getNumOutputs());
         for (int i = 0; i < computation.getNumOutputs(); i += 1) {
-            outputsRecords.set(i, new ArrayList<>());
+            outputsRecords.add(new ArrayList<>());
         }
 
         // Assume only first input is applied partition-wise, other inputs are applied as a
@@ -258,12 +260,24 @@ public class IterableExecutor implements ComputationExecutor<Iterable<?>> {
         private final MapPureFunc<IN, OUT> fn;
         private final Collector<OUT> collector;
         private final Queue<OUT> output;
+        private boolean endInput;
 
         public MapPureFuncIterator(Iterable<IN> in, MapPureFunc<IN, OUT> fn) {
             this.iter = in.iterator();
             this.fn = fn;
             output = new ArrayDeque<>();
             collector = new ConsumerCollector<>(output::add);
+            if (fn instanceof RichPureFunc) {
+                try {
+                    ((RichPureFunc<?>) fn).setContext(new PureFuncContextImpl(1, 0, 1));
+                    ((RichPureFunc<?>) fn).open();
+                } catch (Exception e) {
+                    throw new RuntimeException(
+                            String.format("Call open failed in %s", fn.getClass().getSimpleName()),
+                            e);
+                }
+            }
+            endInput = false;
         }
 
         @Override
@@ -273,7 +287,21 @@ public class IterableExecutor implements ComputationExecutor<Iterable<?>> {
                     fn.map(iter.next(), collector);
                 } catch (Exception e) {
                     throw new RuntimeException(
-                            String.format("Call map failed in %s", fn.getClass().getSimpleName()));
+                            String.format("Call map failed in %s", fn.getClass().getSimpleName()),
+                            e);
+                }
+            }
+            if (!endInput && !iter.hasNext()) {
+                endInput = true;
+                if (fn instanceof RichPureFunc) {
+                    try {
+                        ((RichPureFunc<OUT>) fn).close(collector);
+                    } catch (Exception e) {
+                        throw new RuntimeException(
+                                String.format(
+                                        "Call close failed in %s", fn.getClass().getSimpleName()),
+                                e);
+                    }
                 }
             }
             return !output.isEmpty();
@@ -281,7 +309,7 @@ public class IterableExecutor implements ComputationExecutor<Iterable<?>> {
 
         @Override
         public OUT next() {
-            return output.poll();
+            return output.remove();
         }
     }
 
@@ -291,6 +319,7 @@ public class IterableExecutor implements ComputationExecutor<Iterable<?>> {
         private final MapWithDataPureFunc<IN, DATA, OUT> fn;
         private final Collector<OUT> collector;
         private final Queue<OUT> output;
+        private boolean endInput;
 
         public MapWithDataPureFuncIterator(
                 Iterable<IN> in, DATA data, MapWithDataPureFunc<IN, DATA, OUT> fn) {
@@ -299,6 +328,17 @@ public class IterableExecutor implements ComputationExecutor<Iterable<?>> {
             this.fn = fn;
             output = new ArrayDeque<>();
             collector = new ConsumerCollector<>(output::add);
+            if (fn instanceof RichPureFunc) {
+                try {
+                    ((RichPureFunc<?>) fn).setContext(new PureFuncContextImpl(1, 0, 1));
+                    ((RichPureFunc<?>) fn).open();
+                } catch (Exception e) {
+                    throw new RuntimeException(
+                            String.format("Call open failed in %s", fn.getClass().getSimpleName()),
+                            e);
+                }
+            }
+            endInput = false;
         }
 
         @Override
@@ -308,7 +348,21 @@ public class IterableExecutor implements ComputationExecutor<Iterable<?>> {
                     fn.map(iter.next(), data, collector);
                 } catch (Exception e) {
                     throw new RuntimeException(
-                            String.format("Call map failed in %s", fn.getClass().getSimpleName()));
+                            String.format("Call map failed in %s", fn.getClass().getSimpleName()),
+                            e);
+                }
+            }
+            if (!endInput && !iter.hasNext()) {
+                endInput = true;
+                if (fn instanceof RichPureFunc) {
+                    try {
+                        ((RichPureFunc<OUT>) fn).close(collector);
+                    } catch (Exception e) {
+                        throw new RuntimeException(
+                                String.format(
+                                        "Call close failed in %s", fn.getClass().getSimpleName()),
+                                e);
+                    }
                 }
             }
             return !output.isEmpty();
@@ -316,7 +370,7 @@ public class IterableExecutor implements ComputationExecutor<Iterable<?>> {
 
         @Override
         public OUT next() {
-            return output.poll();
+            return output.remove();
         }
     }
 
@@ -325,18 +379,32 @@ public class IterableExecutor implements ComputationExecutor<Iterable<?>> {
         private final MapPartitionPureFunc<IN, OUT> fn;
         private final Collector<OUT> collector;
         private final Queue<OUT> output;
+        private boolean started;
 
         public MapPartitionPureFuncIterator(Iterable<IN> in, MapPartitionPureFunc<IN, OUT> fn) {
             this.in = in;
             this.fn = fn;
             output = new ArrayDeque<>();
             collector = new ConsumerCollector<>(output::add);
+            if (fn instanceof RichPureFunc) {
+                try {
+                    ((RichPureFunc<?>) fn).setContext(new PureFuncContextImpl(1, 0, 1));
+                    ((RichPureFunc<?>) fn).open();
+                } catch (Exception e) {
+                    throw new RuntimeException(
+                            String.format("Call open failed in %s", fn.getClass().getSimpleName()),
+                            e);
+                }
+            }
+            started = false;
         }
 
         @Override
         public boolean hasNext() {
-            // TODO: Improve this with SynchronousQueue.
-            fn.map(in, collector);
+            if (!started) {
+                started = true;
+                fn.map(in, collector);
+            }
             return !output.isEmpty();
         }
 
@@ -352,6 +420,7 @@ public class IterableExecutor implements ComputationExecutor<Iterable<?>> {
         private final MapPartitionWithDataPureFunc<IN, DATA, OUT> fn;
         private final Collector<OUT> collector;
         private final Queue<OUT> output;
+        private boolean started;
 
         public MapPartitionWithDataPureFuncIterator(
                 Iterable<IN> in, DATA data, MapPartitionWithDataPureFunc<IN, DATA, OUT> fn) {
@@ -360,12 +429,26 @@ public class IterableExecutor implements ComputationExecutor<Iterable<?>> {
             this.fn = fn;
             output = new ArrayDeque<>();
             collector = new ConsumerCollector<>(output::add);
+            if (fn instanceof RichPureFunc) {
+                try {
+                    ((RichPureFunc<?>) fn).setContext(new PureFuncContextImpl(1, 0, 1));
+                    ((RichPureFunc<?>) fn).open();
+                } catch (Exception e) {
+                    throw new RuntimeException(
+                            String.format("Call open failed in %s", fn.getClass().getSimpleName()),
+                            e);
+                }
+            }
+            started = false;
         }
 
         @Override
         public boolean hasNext() {
-            // TODO: Improve this with SynchronousQueue.
-            fn.map(in, data, collector);
+            if (!started) {
+                started = true;
+                // TODO: Improve this with SynchronousQueue.
+                fn.map(in, data, collector);
+            }
             return !output.isEmpty();
         }
 

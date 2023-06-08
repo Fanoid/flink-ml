@@ -141,10 +141,9 @@ public abstract class Data<T> {
     }
 
     public Data<T> reduce(String name, ReducePureFunc<T> reducer) {
-        MapperForReduce<T> mapperForReduce = new MapperForReduce<>(reducer, type);
-        return map(name + "-combine", mapperForReduce, type)
+        return map(name + "-combine", new MapperForReduce<>(reducer, type), type)
                 .all()
-                .map(name + "-reduce", mapperForReduce, type);
+                .map(name + "-reduce", new MapperForReduce<>(reducer, type), type);
     }
 
     <R> Data<R> transformOneInputPureFunc(
