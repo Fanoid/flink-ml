@@ -140,13 +140,12 @@ public class BinaryClassificationEvaluator2
                         new SampleScoreFunction(),
                         PrimitiveArrayTypeInfo.DOUBLE_PRIMITIVE_ARRAY_TYPE_INFO);
 
-        // TODO: Make sampleScoreStream call all().
         return sampleScoreStream
+                .all()
                 .mapPartition(
                         "CalcBoundary",
                         new CalcBoundaryRangeFunction(),
-                        PrimitiveArrayTypeInfo.DOUBLE_PRIMITIVE_ARRAY_TYPE_INFO)
-                .all();
+                        PrimitiveArrayTypeInfo.DOUBLE_PRIMITIVE_ARRAY_TYPE_INFO);
     }
 
     public static Computation getCalcAucComputation(
@@ -195,6 +194,7 @@ public class BinaryClassificationEvaluator2
                         new PartitionSummaryPureFunc(), TypeInformation.of(BinarySummary.class));
         Data<List<BinarySummary>> partitionSummariesList =
                 partitionSummaries
+                        .all()
                         .mapPartition(
                                 (values, out) -> {
                                     List<BinarySummary> l = new ArrayList<>();
@@ -203,8 +203,7 @@ public class BinaryClassificationEvaluator2
                                     }
                                     out.collect(l);
                                 },
-                                Types.LIST(partitionSummaries.getType()))
-                        .all();
+                                Types.LIST(partitionSummaries.getType()));
 
         /* Sorts global data. Output Tuple4 : <score, order, isPositive, weight>. */
         Data<Tuple4<Double, Long, Boolean, Double>> dataWithOrders =
