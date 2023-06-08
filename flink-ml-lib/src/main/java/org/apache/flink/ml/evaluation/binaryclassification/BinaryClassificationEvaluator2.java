@@ -140,12 +140,13 @@ public class BinaryClassificationEvaluator2
                         new SampleScoreFunction(),
                         PrimitiveArrayTypeInfo.DOUBLE_PRIMITIVE_ARRAY_TYPE_INFO);
 
+        // TODO: Make sampleScoreStream call all().
         return sampleScoreStream
-                .all()
                 .mapPartition(
                         "CalcBoundary",
                         new CalcBoundaryRangeFunction(),
-                        PrimitiveArrayTypeInfo.DOUBLE_PRIMITIVE_ARRAY_TYPE_INFO);
+                        PrimitiveArrayTypeInfo.DOUBLE_PRIMITIVE_ARRAY_TYPE_INFO)
+                .all();
     }
 
     public static Computation getCalcAucComputation(
@@ -160,7 +161,7 @@ public class BinaryClassificationEvaluator2
         Data<Tuple4<Double, Boolean, Double, Integer>> evalDataWithTaskId =
                 evalData.map(
                         new AppendTaskIdPureFunc(),
-                        boundaryRange,
+                        boundaryRange.broadcast(),
                         Types.TUPLE(Types.DOUBLE, Types.BOOLEAN, Types.DOUBLE, Types.INT));
 
         /* Repartition the evaluated data by range. */
@@ -193,21 +194,23 @@ public class BinaryClassificationEvaluator2
                 sortEvalData.map(
                         new PartitionSummaryPureFunc(), TypeInformation.of(BinarySummary.class));
         Data<List<BinarySummary>> partitionSummariesList =
-                partitionSummaries.mapPartition(
-                        (values, out) -> {
-                            List<BinarySummary> l = new ArrayList<>();
-                            for (BinarySummary value : values) {
-                                l.add(value);
-                            }
-                            out.collect(l);
-                        },
-                        Types.LIST(partitionSummaries.getType()));
+                partitionSummaries
+                        .mapPartition(
+                                (values, out) -> {
+                                    List<BinarySummary> l = new ArrayList<>();
+                                    for (BinarySummary value : values) {
+                                        l.add(value);
+                                    }
+                                    out.collect(l);
+                                },
+                                Types.LIST(partitionSummaries.getType()))
+                        .all();
 
         /* Sorts global data. Output Tuple4 : <score, order, isPositive, weight>. */
         Data<Tuple4<Double, Long, Boolean, Double>> dataWithOrders =
                 sortEvalData.map(
                         new CalcSampleOrdersPureFunc(),
-                        partitionSummariesList,
+                        partitionSummariesList.broadcast(),
                         Types.TUPLE(Types.DOUBLE, Types.LONG, Types.BOOLEAN, Types.DOUBLE));
 
         Data<double[]> localAreaUnderROCVariable =
@@ -476,6 +479,7 @@ public class BinaryClassificationEvaluator2
             for (int i = boundaryRange.length - 1; i > 0; --i) {
                 if (value.f0 > boundaryRange[i]) {
                     out.collect(Tuple4.of(value.f0, value.f1, value.f2, i));
+                    return;
                 }
             }
             out.collect(Tuple4.of(value.f0, value.f1, value.f2, 0));

@@ -158,7 +158,10 @@ public class FlinkExecutor implements ComputationExecutor<DataStream> {
             DataStream<?> records;
             switch (strategy) {
                 case ALL:
-                    records = upstreamRecords.map(d -> d).setParallelism(1);
+                    // TODO: current process is not right, because Data#all is called after the
+                    // operation.
+                    records = upstreamRecords;
+                    records.getTransformation().setParallelism(1);
                     break;
                 case BROADCAST:
                     records = upstreamRecords.broadcast();
