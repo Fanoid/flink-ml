@@ -26,6 +26,7 @@ import org.apache.flink.ml.common.computation.builder.OutputDataList;
 import org.apache.flink.ml.common.computation.builder.PartitionedData;
 import org.apache.flink.ml.common.computation.computation.CompositeComputation;
 import org.apache.flink.ml.common.computation.computation.Computation;
+import org.apache.flink.ml.common.computation.computation.IterationComputation;
 import org.apache.flink.ml.common.computation.purefunc.ConsumerCollector;
 import org.apache.flink.ml.common.computation.purefunc.MapPartitionPureFunc;
 import org.apache.flink.ml.common.computation.purefunc.MapPartitionWithDataPureFunc;
@@ -237,6 +238,11 @@ public class IterableExecutor implements ComputationExecutor<Iterable<?>> {
                 .map(dataRecordsMap::get)
                 .<Iterable<?>>map(d -> new IterableChain(d))
                 .collect(Collectors.<Iterable<?>>toList());
+    }
+
+    @Override
+    public List<Iterable<?>> execute(IterationComputation computation, List<Iterable<?>> inputs) {
+        throw new UnsupportedOperationException();
     }
 
     private static class IterableChain<T> implements Iterable<T> {

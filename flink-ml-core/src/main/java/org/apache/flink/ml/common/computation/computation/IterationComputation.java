@@ -19,54 +19,98 @@
 package org.apache.flink.ml.common.computation.computation;
 
 import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.iteration.Iterations;
+import org.apache.flink.ml.common.computation.execution.FlinkExecutor;
+import org.apache.flink.ml.common.computation.execution.FlinkIterationExecutor;
+import org.apache.flink.streaming.api.datastream.DataStream;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
-/** The computation representing iterations. */
+/**
+ * The computation representing iterations.
+ *
+ * <p>Basically, the convention proposed by {@link Iterations} is followed and simplified to more
+ * natural usage:
+ *
+ * <ol>
+ *   <li>A {@link #step} computation is executed in every iteration.
+ *   <li>After every iteration, some outputs of {@link #step} are fed back to inputs of {@link
+ *       #step} specified with {@link #feedbackMap}. These inputs being fed back are identified as
+ *       `variables` (similar with the concepts of variable streams in {@link Iterations}), while
+ *       other inputs are identified as `data`.
+ *   <li>Before the first iteration, the inputs of {@link IterationComputation} are 1-1
+ *       correspondents with the inputs of {@link #step} .
+ *   <li>Some outputs of {@link #step} are used as the outputs of {@link IterationComputation}.
+ *       There correspondences are specified using {@link #outputMapping}.
+ * </ol>
+ */
 public class IterationComputation implements Computation {
 
-    // THe computation for one iteration, which has n inputs, m outputs
-    public final Computation oneIteration;
+    // The computation for one step in the iterations.
+    public final Computation step;
+
+    /** Feeds the outputs of {@link #step} to its inputs. */
+    public final Map<Integer, Integer> feedbackMap;
+
+    /** Maps the outputs of {@link IterationComputation} to the outputs of {@link #step}. */
+    public final List<Integer> outputMapping;
 
     // Input indices to be replayed in every iteration
-    public final List<Integer> replayInputs;
-
-    // Feedback output indices to input indices
-    public final Map<Integer, Integer> feedbackMap;
+    public final Set<Integer> replayInputs;
 
     // The output index indicating the end of iterations, whose type must be boolean.
     public final int endCriteriaIndex;
 
-    // Output indices
-    public final List<Integer> outputs;
-
     public IterationComputation(
-            Computation oneIteration,
-            List<Integer> replayInputs,
+            Computation step,
             Map<Integer, Integer> feedbackMap,
+            List<Integer> outputMapping,
             int endCriteriaIndex,
-            List<Integer> outputs) {
-        this.oneIteration = oneIteration;
-        this.replayInputs = replayInputs;
+            Set<Integer> replayableIndices) {
+        this.step = step;
         this.feedbackMap = feedbackMap;
+        this.outputMapping = outputMapping;
         this.endCriteriaIndex = endCriteriaIndex;
-        this.outputs = outputs;
+        this.replayInputs = replayableIndices;
     }
 
     @Override
     public int getNumInputs() {
-        return oneIteration.getNumInputs();
+        return step.getNumInputs();
     }
 
     @Override
     public int getNumOutputs() {
-        return outputs.size();
+        return outputMapping.size();
     }
 
     @Override
     public List<TypeInformation<?>> getOutTypes() {
-        // TODO: fixit.
-        return null;
+        List<TypeInformation<?>> stepOutTypes = step.getOutTypes();
+        return outputMapping.stream().map(stepOutTypes::get).collect(Collectors.toList());
+    }
+
+    @Override
+    public List<Iterable<?>> execute(List<Iterable<?>> inputs) {
+        return Computation.super.execute(inputs);
+    }
+
+    @Override
+    public List<DataStream<?>> executeOnFlink(List<DataStream<?>> inputs) {
+        //noinspection unchecked,rawtypes
+        return (List<DataStream<?>>)
+                (List) FlinkExecutor.getInstance().execute(this, (List<DataStream>) (List) inputs);
+    }
+
+    @Override
+    public List<DataStream<?>> executeInIterations(List<DataStream<?>> inputs) {
+        //noinspection unchecked,rawtypes
+        return (List<DataStream<?>>)
+                (List)
+                        FlinkIterationExecutor.getInstance()
+                                .execute(this, (List<DataStream>) (List) inputs);
     }
 }

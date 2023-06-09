@@ -56,6 +56,10 @@ public class KMeans2 implements Estimator<KMeans2, KMeansModel>, KMeansParams<KM
 
     private final Map<Param<?>, Object> paramMap = new HashMap<>();
 
+    public KMeans2() {
+        ParamUtils.initializeMapWithDefaultValues(paramMap, this);
+    }
+
     public static IterationComputation makeIterationComputation(
             int maxIters, DistanceMeasure distanceMeasure) {
         Data<DenseVector[]> centroids =
@@ -70,12 +74,14 @@ public class KMeans2 implements Estimator<KMeans2, KMeansModel>, KMeansParams<KM
         Data<Iterable<VectorWithNorm>> cachedPoints = pointsWithNorm.cacheWithSequentialRead();
 
         Data<Tuple2<Integer[], DenseVector[]>> centroidIdAndPoints =
-                centroids.map(
-                        new CentroidsUpdatePureFunc(distanceMeasure),
-                        cachedPoints,
-                        Types.TUPLE(
-                                Types.OBJECT_ARRAY(Types.INT),
-                                Types.OBJECT_ARRAY(DenseVectorTypeInfo.INSTANCE)));
+                centroids
+                        .broadcast()
+                        .map(
+                                new CentroidsUpdatePureFunc(distanceMeasure),
+                                cachedPoints,
+                                Types.TUPLE(
+                                        Types.OBJECT_ARRAY(Types.INT),
+                                        Types.OBJECT_ARRAY(DenseVectorTypeInfo.INSTANCE)));
 
         Data<KMeansModelData> newModelData =
                 centroidIdAndPoints
@@ -110,10 +116,10 @@ public class KMeans2 implements Estimator<KMeans2, KMeansModel>, KMeansParams<KM
                 new CompositeComputation(
                         Arrays.asList(centroids, points),
                         Arrays.asList(endCriteria, newCentroids, outputModel)),
-                Collections.emptyList(),
                 Collections.singletonMap(1, 0),
+                Collections.singletonList(2),
                 0,
-                Collections.singletonList(2));
+                Collections.singleton(1));
     }
 
     @Override
@@ -128,6 +134,7 @@ public class KMeans2 implements Estimator<KMeans2, KMeansModel>, KMeansParams<KM
 
         DataStream<DenseVector[]> initCentroids =
                 KMeans.selectRandomCentroids(points, getK(), getSeed());
+        initCentroids.getTransformation().setParallelism(points.getParallelism());
 
         //        IterationConfig config =
         //                IterationConfig.newBuilder()
@@ -152,12 +159,8 @@ public class KMeans2 implements Estimator<KMeans2, KMeansModel>, KMeansParams<KM
         IterationComputation iterationComputation =
                 makeIterationComputation(
                         getMaxIter(), DistanceMeasure.getInstance(getDistanceMeasure()));
-        List<DataStream<?>> outputs;
-        try {
-            outputs = iterationComputation.executeOnFlink(Arrays.asList(initCentroids, points));
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+        List<DataStream<?>> outputs =
+                iterationComputation.executeOnFlink(Arrays.asList(initCentroids, points));
         //noinspection unchecked
         DataStream<KMeansModelData> finalModelData = (DataStream<KMeansModelData>) outputs.get(0);
 

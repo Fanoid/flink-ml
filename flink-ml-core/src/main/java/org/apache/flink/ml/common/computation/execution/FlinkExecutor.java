@@ -20,12 +20,20 @@ package org.apache.flink.ml.common.computation.execution;
 
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.java.functions.KeySelector;
+import org.apache.flink.iteration.DataStreamList;
+import org.apache.flink.iteration.IterationBody;
+import org.apache.flink.iteration.IterationBodyResult;
+import org.apache.flink.iteration.IterationConfig;
+import org.apache.flink.iteration.Iterations;
+import org.apache.flink.iteration.ReplayableDataStreamList;
 import org.apache.flink.ml.common.computation.builder.Data;
 import org.apache.flink.ml.common.computation.builder.OutputData;
 import org.apache.flink.ml.common.computation.builder.OutputDataList;
 import org.apache.flink.ml.common.computation.builder.PartitionedData;
+import org.apache.flink.ml.common.computation.builder.SequentialReadData;
 import org.apache.flink.ml.common.computation.computation.CompositeComputation;
 import org.apache.flink.ml.common.computation.computation.Computation;
+import org.apache.flink.ml.common.computation.computation.IterationComputation;
 import org.apache.flink.ml.common.computation.execution.FlinkExecutorUtils.ExecuteMapPartitionWithDataPureFuncOperator;
 import org.apache.flink.ml.common.computation.execution.FlinkExecutorUtils.ExecuteMapPureFuncOperator;
 import org.apache.flink.ml.common.computation.execution.FlinkExecutorUtils.ExecuteMapWithDataPureFuncOperator;
@@ -38,9 +46,11 @@ import org.apache.flink.ml.common.computation.purefunc.PureFunc;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.util.Preconditions;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /** ... */
@@ -173,6 +183,8 @@ public class FlinkExecutor implements ComputationExecutor<DataStream> {
                     throw new IllegalStateException("Unexpected value: " + strategy);
             }
             dataRecordsMap.put(data, records);
+        } else if (data instanceof SequentialReadData) {
+            // TODO: Cache data to ListStateWithCache
         } else {
             Preconditions.checkState(1 == upstreams.size());
             dataRecordsMap.put(data, dataRecordsMap.get(data.getUpstreams().get(0)));
@@ -199,6 +211,104 @@ public class FlinkExecutor implements ComputationExecutor<DataStream> {
         }
 
         return computation.getEnds().stream().map(dataRecordsMap::get).collect(Collectors.toList());
+    }
+
+    @Override
+    public List<DataStream> execute(IterationComputation computation, List<DataStream> inputs) {
+        Preconditions.checkArgument(computation.getNumInputs() == inputs.size());
+
+        Map<Integer, Integer> feedbackMap = computation.feedbackMap;
+        Set<Integer> replayableInputs = computation.replayInputs;
+
+        Map<Integer, Integer> reversedFeedbackMap =
+                feedbackMap.entrySet().stream()
+                        .collect(Collectors.toMap(Map.Entry::getValue, Map.Entry::getKey));
+
+        // 0: variable stream, 1: replayable data stream, 2: non-replayable data stream.
+        int[] inputTypes = new int[inputs.size()];
+        int replayableCounter = 0;
+        for (int i = 0; i < inputs.size(); i += 1) {
+            if (reversedFeedbackMap.containsKey(i)) {
+                inputTypes[i] = 0;
+                Preconditions.checkNotNull(
+                        !replayableInputs.contains(i),
+                        "A input cannot be replayable and the feedback target at the same time.");
+            } else {
+                if (replayableInputs.contains(i)) {
+                    inputTypes[i] = 1;
+                    replayableCounter += 1;
+                } else {
+                    inputTypes[i] = 2;
+                }
+            }
+        }
+
+        List<DataStream<?>> initVar = new ArrayList<>();
+        List<DataStream<?>> replayable = new ArrayList<>();
+        List<DataStream<?>> nonReplayable = new ArrayList<>();
+        Map<Integer, Integer> inputToVarIndex = new HashMap<>();
+        Map<Integer, Integer> inputToDataIndex = new HashMap<>();
+
+        for (int i = 0; i < inputs.size(); i += 1) {
+            DataStream<?> stream = inputs.get(i);
+            if (inputTypes[i] == 0) {
+                inputToVarIndex.put(i, initVar.size());
+                initVar.add(stream);
+            } else if (inputTypes[i] == 1) {
+                inputToDataIndex.put(i, replayable.size());
+                replayable.add(stream);
+            } else if (inputTypes[i] == 2) {
+                inputToDataIndex.put(i, nonReplayable.size() + replayableCounter);
+                nonReplayable.add(stream);
+            }
+        }
+
+        IterationBody body =
+                new IterationBody() {
+                    @Override
+                    public IterationBodyResult process(
+                            DataStreamList variableStreams, DataStreamList dataStreams) {
+
+                        final Computation step = computation.step;
+                        List<DataStream<?>> stepInputs = new ArrayList<>();
+                        for (int i = 0; i < step.getNumInputs(); i += 1) {
+                            if (inputToDataIndex.containsKey(i)) {
+                                stepInputs.add(dataStreams.get(inputToDataIndex.get(i)));
+                            } else {
+                                stepInputs.add(variableStreams.get(inputToVarIndex.get(i)));
+                            }
+                        }
+                        List<DataStream<?>> stepOutputs = step.executeInIterations(stepInputs);
+
+                        List<DataStream<?>> feedback = new ArrayList<>();
+                        for (int i = 0; i < variableStreams.size(); i += 1) {
+                            feedback.add(null);
+                        }
+                        for (int outIndex : feedbackMap.keySet()) {
+                            int varIndex = inputToVarIndex.get(feedbackMap.get(outIndex));
+                            feedback.set(varIndex, stepOutputs.get(outIndex));
+                        }
+
+                        return new IterationBodyResult(
+                                DataStreamList.of(feedback.toArray(new DataStream[0])),
+                                DataStreamList.of(
+                                        computation.outputMapping.stream()
+                                                .map(stepOutputs::get)
+                                                .toArray(DataStream[]::new)),
+                                stepOutputs.get(computation.endCriteriaIndex));
+                    }
+                };
+
+        DataStreamList outputs =
+                Iterations.iterateBoundedStreamsUntilTermination(
+                        new DataStreamList(initVar),
+                        ReplayableDataStreamList.replay(replayable.toArray(new DataStream[0]))
+                                .andNotReplay(nonReplayable.toArray(new DataStream[0])),
+                        IterationConfig.newBuilder()
+                                .setOperatorLifeCycle(IterationConfig.OperatorLifeCycle.ALL_ROUND)
+                                .build(),
+                        body);
+        return (List<DataStream>) (List) outputs.getDataStreams();
     }
 
     @Override
