@@ -30,6 +30,7 @@ import org.apache.flink.ml.common.computation.purefunc.MapWithDataPureFunc;
 import org.apache.flink.ml.common.computation.purefunc.PureFunc;
 import org.apache.flink.util.Preconditions;
 
+import java.util.Collections;
 import java.util.List;
 
 /** Executor for computations. */
@@ -92,9 +93,19 @@ interface ComputationExecutor<T> {
         }
     }
 
-    List<T> execute(CompositeComputation computation, List<T> inputs) throws Exception;
+    List<T> execute(CompositeComputation computation, List<T> inputs);
 
     List<T> execute(IterationComputation computation, List<T> inputs);
 
-    List<T> execute(Computation computation, List<T> inputs);
+    default List<T> execute(Computation computation, List<T> inputs) {
+        if (computation instanceof PureFuncComputation) {
+            return Collections.singletonList(execute((PureFuncComputation) computation, inputs));
+        } else if (computation instanceof CompositeComputation) {
+            return execute((CompositeComputation) computation, inputs);
+        } else if (computation instanceof IterationComputation) {
+            return execute((IterationComputation) computation, inputs);
+        } else {
+            throw new RuntimeException();
+        }
+    }
 }

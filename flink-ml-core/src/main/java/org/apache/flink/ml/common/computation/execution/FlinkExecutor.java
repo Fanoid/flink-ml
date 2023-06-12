@@ -67,8 +67,11 @@ public class FlinkExecutor implements ComputationExecutor<DataStream> {
     @Override
     public <IN, OUT> DataStream<OUT> executeMap(
             DataStream in, MapPureFunc<IN, OUT> func, String name, TypeInformation<OUT> outType) {
+        boolean inIterations = this instanceof FlinkIterationExecutor;
         return in.transform(
-                name, outType, new ExecuteMapPureFuncOperator(func, in.getParallelism()));
+                name,
+                outType,
+                new ExecuteMapPureFuncOperator(func, in.getParallelism(), inIterations));
     }
 
     @Override
@@ -78,12 +81,17 @@ public class FlinkExecutor implements ComputationExecutor<DataStream> {
             MapWithDataPureFunc<IN, DATA, OUT> func,
             String name,
             TypeInformation<OUT> outType) {
+        boolean inIterations = this instanceof FlinkIterationExecutor;
         return in.connect(data)
                 .transform(
                         name,
                         outType,
                         new ExecuteMapWithDataPureFuncOperator<>(
-                                func, in.getParallelism(), in.getType(), data.getType()));
+                                func,
+                                in.getParallelism(),
+                                in.getType(),
+                                data.getType(),
+                                inIterations));
     }
 
     @Override
@@ -92,10 +100,12 @@ public class FlinkExecutor implements ComputationExecutor<DataStream> {
             MapPartitionPureFunc<IN, OUT> func,
             String name,
             TypeInformation<OUT> outType) {
+        boolean inIterations = this instanceof FlinkIterationExecutor;
         return in.transform(
                 name,
                 outType,
-                new ExecutorMapPartitionPureFuncOperator<>(func, in.getParallelism()));
+                new ExecutorMapPartitionPureFuncOperator<>(
+                        func, in.getParallelism(), inIterations));
     }
 
     @Override
@@ -105,12 +115,17 @@ public class FlinkExecutor implements ComputationExecutor<DataStream> {
             MapPartitionWithDataPureFunc<IN, DATA, OUT> func,
             String name,
             TypeInformation<OUT> outType) {
+        boolean inIterations = this instanceof FlinkIterationExecutor;
         return in.connect(data)
                 .transform(
                         name,
                         outType,
                         new ExecuteMapPartitionWithDataPureFuncOperator<>(
-                                func, in.getParallelism(), in.getType(), data.getType()));
+                                func,
+                                in.getParallelism(),
+                                in.getType(),
+                                data.getType(),
+                                inIterations));
     }
 
     @Override
@@ -134,7 +149,9 @@ public class FlinkExecutor implements ComputationExecutor<DataStream> {
                         .map(dataRecordsMap::get)
                         .collect(Collectors.toList());
         Computation computation = outputDataList.computation;
-        List<DataStream<?>> outputsRecords = computation.executeOnFlink(inputsRecords);
+        List<DataStream<?>> outputsRecords =
+                (List<DataStream<?>>)
+                        (List) this.execute(computation, (List<DataStream>) (List) inputsRecords);
         outputDataListRecordsMap.put(outputDataList, outputsRecords);
         return outputsRecords;
     }
@@ -321,10 +338,5 @@ public class FlinkExecutor implements ComputationExecutor<DataStream> {
                                 .build(),
                         body);
         return (List<DataStream>) (List) outputs.getDataStreams();
-    }
-
-    @Override
-    public List<DataStream> execute(Computation computation, List<DataStream> inputs) {
-        return null;
     }
 }

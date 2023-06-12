@@ -113,11 +113,6 @@ public class IterableExecutor implements ComputationExecutor<Iterable<?>> {
         return (Iterable<OUT>) func.execute(inputs).get(0);
     }
 
-    @Override
-    public List<Iterable<?>> execute(Computation computation, List<Iterable<?>> inputs) {
-        return null;
-    }
-
     private List<List<Iterable<?>>> calcOutputDataListRecords(
             OutputDataList outputDataList,
             Map<Data<?>, List<Iterable<?>>> dataRecordsMap,

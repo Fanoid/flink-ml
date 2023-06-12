@@ -26,11 +26,10 @@ import org.apache.flink.ml.common.computation.purefunc.MapPartitionPureFunc;
 import org.apache.flink.ml.common.computation.purefunc.MapPartitionWithDataPureFunc;
 import org.apache.flink.ml.common.computation.purefunc.MapPureFunc;
 import org.apache.flink.ml.common.computation.purefunc.MapWithDataPureFunc;
+import org.apache.flink.ml.common.computation.purefunc.PureFunc;
 import org.apache.flink.ml.common.computation.purefunc.PureFuncContextImpl;
 import org.apache.flink.ml.common.computation.purefunc.RichMapPartitionPureFunc;
-import org.apache.flink.ml.common.computation.purefunc.RichMapPartitionWithDataPureFunc;
 import org.apache.flink.ml.common.computation.purefunc.RichMapPureFunc;
-import org.apache.flink.ml.common.computation.purefunc.RichMapWithDataPureFunc;
 import org.apache.flink.ml.common.computation.purefunc.RichPureFunc;
 import org.apache.flink.ml.common.computation.purefunc.StateDesc;
 import org.apache.flink.runtime.state.StateInitializationContext;
@@ -47,6 +46,7 @@ import org.apache.flink.util.Preconditions;
 import org.apache.commons.lang3.concurrent.BasicThreadFactory;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.NoSuchElementException;
@@ -58,47 +58,33 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 class FlinkExecutorUtils {
-    static class ExecutorMapPartitionPureFuncOperator<IN, OUT> extends AbstractStreamOperator<OUT>
-            implements OneInputStreamOperator<IN, OUT>, BoundedOneInput, IterationListener<OUT> {
+
+    static class ExecutorMapPartitionPureFuncOperator<IN, OUT>
+            extends AbstractExecutePureFuncOperator<OUT>
+            implements OneInputStreamOperator<IN, OUT>, BoundedOneInput {
         private final MapPartitionPureFunc<IN, OUT> func;
-        private final int inputParallelism;
 
         private transient InputIterator<IN> inputIterator;
-
         private transient Collector<OUT> collector;
-
-        private transient StateHandler stateHandler;
 
         private transient ExecutorService executorService;
         private transient Future<?> future;
 
-        private transient PureFuncContextImpl pureFuncContext;
-
         public ExecutorMapPartitionPureFuncOperator(
-                MapPartitionPureFunc<IN, OUT> func, int inputParallelism) {
+                MapPartitionPureFunc<IN, OUT> func, int inputParallelism, boolean inIterations) {
+            super(func, inputParallelism, inIterations);
             this.func = func;
-            this.inputParallelism = inputParallelism;
         }
 
         @Override
         public void open() throws Exception {
             super.open();
-            pureFuncContext =
-                    new PureFuncContextImpl(
-                            getRuntimeContext().getNumberOfParallelSubtasks(),
-                            getRuntimeContext().getIndexOfThisSubtask(),
-                            inputParallelism);
-            if (func instanceof RichMapPartitionPureFunc) {
-                ((RichMapPartitionPureFunc<IN, OUT>) func).setContext(pureFuncContext);
-                ((RichMapPartitionPureFunc<IN, OUT>) func).open();
-            }
-
             BasicThreadFactory factory =
                     new BasicThreadFactory.Builder()
                             .namingPattern(getOperatorName() + "-input-thread-%d")
                             .build();
             executorService = Executors.newSingleThreadExecutor(factory);
-            collector = null;
+            inputIterator = null;
         }
 
         @Override
@@ -125,44 +111,18 @@ class FlinkExecutorUtils {
         }
 
         @Override
-        public void initializeState(StateInitializationContext context) throws Exception {
-            super.initializeState(context);
-            if (func instanceof RichPureFunc) {
-                stateHandler =
-                        new StateHandler(
-                                ((RichMapPartitionPureFunc<IN, OUT>) func).getStateDescs());
-                stateHandler.initializeState(context);
-            }
-        }
-
-        @Override
-        public void snapshotState(StateSnapshotContext context) throws Exception {
-            super.snapshotState(context);
-            if (func instanceof RichMapPartitionPureFunc) {
-                stateHandler.snapshotState(context);
-            }
-        }
-
-        @Override
         public void onEpochWatermarkIncremented(
                 int epochWatermark, Context context, Collector<OUT> collector) throws Exception {
-            if (func instanceof RichMapPartitionPureFunc) {
-                ((RichMapPartitionPureFunc<IN, OUT>) func).close(collector);
-            }
             if (null != inputIterator) {
                 inputIterator.end(future);
                 future.get();
                 inputIterator = null;
             }
-            pureFuncContext.setIteration(epochWatermark);
-            if (func instanceof RichMapPartitionPureFunc) {
-                ((RichMapPartitionPureFunc<IN, OUT>) func).open();
-            }
+            super.onEpochWatermarkIncremented(epochWatermark, context, collector);
         }
 
         @Override
-        public void onIterationTerminated(Context context, Collector<OUT> collector)
-                throws Exception {
+        public void onIterationTerminated(Context context, Collector<OUT> collector) {
             executorService.shutdown();
             Preconditions.checkState(executorService.isShutdown());
         }
@@ -258,20 +218,20 @@ class FlinkExecutorUtils {
         }
     }
 
-    static class ExecuteMapPureFuncOperator<IN, OUT> extends AbstractStreamOperator<OUT>
-            implements OneInputStreamOperator<IN, OUT>, BoundedOneInput, IterationListener<OUT> {
+    abstract static class AbstractExecutePureFuncOperator<OUT> extends AbstractStreamOperator<OUT>
+            implements IterationListener<OUT> {
+        protected final PureFunc<OUT> pureFunc;
+        protected final int inputParallelism;
+        protected final boolean inIterations;
 
-        private final MapPureFunc<IN, OUT> func;
-        private final int inputParallelism;
+        protected transient PureFuncContextImpl pureFuncContext;
+        protected transient StateHandler stateHandler;
 
-        private transient Collector<OUT> collector;
-
-        private transient StateHandler stateHandler;
-        private transient PureFuncContextImpl pureFuncContext;
-
-        public ExecuteMapPureFuncOperator(MapPureFunc<IN, OUT> func, int inputParallelism) {
-            this.func = func;
+        public AbstractExecutePureFuncOperator(
+                PureFunc<OUT> pureFunc, int inputParallelism, boolean inIterations) {
+            this.pureFunc = pureFunc;
             this.inputParallelism = inputParallelism;
+            this.inIterations = inIterations;
         }
 
         @Override
@@ -282,12 +242,81 @@ class FlinkExecutorUtils {
                             getRuntimeContext().getNumberOfParallelSubtasks(),
                             getRuntimeContext().getIndexOfThisSubtask(),
                             inputParallelism);
-            if (func instanceof RichMapPureFunc) {
-                // TODO: ad-hoc fix
-                pureFuncContext.setIteration(-1);
-                ((RichMapPureFunc<IN, OUT>) func).setContext(pureFuncContext);
-                ((RichMapPureFunc<IN, OUT>) func).open();
+            if (pureFunc instanceof RichPureFunc) {
+                // Different from Flink, we set round ID at the start of every round.
+                if (inIterations) {
+                    pureFuncContext.setIteration(0);
+                }
+                ((RichPureFunc<OUT>) pureFunc).setContext(pureFuncContext);
+                ((RichPureFunc<OUT>) pureFunc).open();
             }
+        }
+
+        @Override
+        public void onEpochWatermarkIncremented(
+                int epochWatermark, Context context, Collector<OUT> collector) throws Exception {
+            if (pureFunc instanceof RichPureFunc) {
+                ((RichPureFunc<OUT>) pureFunc).close(collector);
+            }
+            pureFuncContext.setIteration(epochWatermark);
+            if (pureFunc instanceof RichPureFunc) {
+                ((RichPureFunc<OUT>) pureFunc).open();
+            }
+        }
+
+        @Override
+        public void onIterationTerminated(Context context, Collector<OUT> collector)
+                throws Exception {}
+
+        /** Returns additional states from operators. */
+        protected List<StateDesc<?, ?>> addtiionalStateDescs() {
+            return Collections.emptyList();
+        }
+
+        @Override
+        public void initializeState(StateInitializationContext context) throws Exception {
+            super.initializeState(context);
+            if (null == stateHandler) {
+                List<StateDesc<?, ?>> stateDescs = new ArrayList<>();
+                if (pureFunc instanceof RichMapPureFunc) {
+                    stateDescs.addAll(((RichMapPureFunc<?, ?>) pureFunc).getStateDescs());
+                }
+                stateDescs.addAll(addtiionalStateDescs());
+                stateHandler = new StateHandler(stateDescs);
+            }
+            stateHandler.initializeState(context);
+        }
+
+        @Override
+        public void snapshotState(StateSnapshotContext context) throws Exception {
+            super.snapshotState(context);
+            stateHandler.snapshotState(context);
+        }
+
+        /** The method to be called when the input stream is ended. */
+        protected void endOfRecords(Collector<OUT> collector) throws Exception {
+            if (!inIterations) {
+                if (pureFunc instanceof RichPureFunc) {
+                    ((RichPureFunc<OUT>) pureFunc).close(collector);
+                }
+            }
+        }
+    }
+
+    static class ExecuteMapPureFuncOperator<IN, OUT> extends AbstractExecutePureFuncOperator<OUT>
+            implements OneInputStreamOperator<IN, OUT>, BoundedOneInput {
+        private final MapPureFunc<IN, OUT> func;
+        private transient Collector<OUT> collector;
+
+        public ExecuteMapPureFuncOperator(
+                MapPureFunc<IN, OUT> func, int inputParallelism, boolean inIterations) {
+            super(func, inputParallelism, inIterations);
+            this.func = func;
+        }
+
+        @Override
+        public void open() throws Exception {
+            super.open();
             collector = new ConsumerCollector<>(v -> output.collect(new StreamRecord<>(v)));
         }
 
@@ -297,56 +326,16 @@ class FlinkExecutorUtils {
         }
 
         @Override
-        public void onEpochWatermarkIncremented(
-                int epochWatermark, Context context, Collector<OUT> collector) throws Exception {
-            pureFuncContext.setIteration(epochWatermark);
-            if (func instanceof RichMapPureFunc) {
-                ((RichMapPureFunc<IN, OUT>) func).close(collector);
-                ((RichMapPureFunc<IN, OUT>) func).open();
-            }
-        }
-
-        @Override
-        public void onIterationTerminated(Context context, Collector<OUT> collector)
-                throws Exception {}
-
-        @Override
-        public void initializeState(StateInitializationContext context) throws Exception {
-            super.initializeState(context);
-            if (null == stateHandler) {
-                List<StateDesc<?, ?>> stateDescs = new ArrayList<>();
-                if (func instanceof RichMapPureFunc) {
-                    stateDescs.addAll(((RichMapPureFunc<IN, OUT>) func).getStateDescs());
-                }
-                stateHandler = new StateHandler(stateDescs);
-            }
-            stateHandler.initializeState(context);
-        }
-
-        @Override
-        public void snapshotState(StateSnapshotContext context) throws Exception {
-            super.snapshotState(context);
-            stateHandler.snapshotState(context);
-        }
-
-        @Override
         public void endInput() throws Exception {
-            if (!pureFuncContext.isInIterations()) {
-                if (func instanceof RichMapPureFunc) {
-                    ((RichMapPureFunc<IN, OUT>) func).close(collector);
-                }
-            }
+            endOfRecords(collector);
         }
     }
 
     static class ExecuteMapWithDataPureFuncOperator<IN, DATA, OUT>
-            extends AbstractStreamOperator<OUT>
-            implements TwoInputStreamOperator<IN, DATA, OUT>,
-                    BoundedMultiInput,
-                    IterationListener<OUT> {
+            extends AbstractExecutePureFuncOperator<OUT>
+            implements TwoInputStreamOperator<IN, DATA, OUT>, BoundedMultiInput {
 
         private final MapWithDataPureFunc<IN, DATA, OUT> func;
-        private final int inputParallelism;
         private final TypeInformation<IN> inType;
         private final TypeInformation<DATA> dataType;
         private transient DATA data;
@@ -354,16 +343,14 @@ class FlinkExecutorUtils {
 
         private transient Collector<OUT> collector;
 
-        private transient StateHandler stateHandler;
-        private transient PureFuncContextImpl pureFuncContext;
-
         public ExecuteMapWithDataPureFuncOperator(
                 MapWithDataPureFunc<IN, DATA, OUT> func,
                 int inputParallelism,
                 TypeInformation<IN> inType,
-                TypeInformation<DATA> dataType) {
+                TypeInformation<DATA> dataType,
+                boolean inIterations) {
+            super(func, inputParallelism, inIterations);
             this.func = func;
-            this.inputParallelism = inputParallelism;
             this.inType = inType;
             this.dataType = dataType;
         }
@@ -371,38 +358,27 @@ class FlinkExecutorUtils {
         @Override
         public void open() throws Exception {
             super.open();
-            if (func instanceof RichMapWithDataPureFunc) {
-                pureFuncContext =
-                        new PureFuncContextImpl(
-                                getRuntimeContext().getNumberOfParallelSubtasks(),
-                                getRuntimeContext().getIndexOfThisSubtask(),
-                                inputParallelism);
-                ((RichMapWithDataPureFunc<IN, DATA, OUT>) func).setContext(pureFuncContext);
-                ((RichMapWithDataPureFunc<IN, DATA, OUT>) func).open();
-            }
             collector = new ConsumerCollector<>(v -> output.collect(new StreamRecord<>(v)));
         }
 
         @Override
         public void onEpochWatermarkIncremented(
                 int epochWatermark, Context context, Collector<OUT> collector) throws Exception {
-            if (func instanceof RichMapWithDataPureFunc) {
-                pureFuncContext.setIteration(epochWatermark);
-                ((RichMapWithDataPureFunc<IN, DATA, OUT>) func).close(collector);
-                ((RichMapWithDataPureFunc<IN, DATA, OUT>) func).open();
-            }
             data = null;
+            super.onEpochWatermarkIncremented(epochWatermark, context, collector);
             inCache.clear();
         }
 
         @Override
-        public void onIterationTerminated(Context context, Collector<OUT> collector)
-                throws Exception {}
+        protected List<StateDesc<?, ?>> addtiionalStateDescs() {
+            return Collections.singletonList(
+                    StateDesc.singleValueState(
+                            "__data", dataType, null, (v) -> data = v, () -> data));
+        }
 
         @Override
         public void initializeState(StateInitializationContext context) throws Exception {
             super.initializeState(context);
-
             inCache =
                     new ListStateWithCache<>(
                             inType.createSerializer(getExecutionConfig()),
@@ -410,26 +386,12 @@ class FlinkExecutorUtils {
                             getRuntimeContext(),
                             context,
                             config.getOperatorID());
-
-            if (null == stateHandler) {
-                List<StateDesc<?, ?>> stateDescs = new ArrayList<>();
-                if (func instanceof RichMapWithDataPureFunc) {
-                    stateDescs.addAll(
-                            ((RichMapWithDataPureFunc<IN, DATA, OUT>) func).getStateDescs());
-                }
-                stateDescs.add(
-                        StateDesc.singleValueState(
-                                "__data", dataType, null, (v) -> data = v, () -> data));
-                stateHandler = new StateHandler(stateDescs);
-            }
-            stateHandler.initializeState(context);
         }
 
         @Override
         public void snapshotState(StateSnapshotContext context) throws Exception {
             super.snapshotState(context);
             inCache.snapshotState(context);
-            stateHandler.snapshotState(context);
         }
 
         @Override
@@ -454,20 +416,15 @@ class FlinkExecutorUtils {
         @Override
         public void endInput(int inputId) throws Exception {
             if (1 == inputId) {
-                if (func instanceof RichMapWithDataPureFunc) {
-                    ((RichMapWithDataPureFunc<IN, DATA, OUT>) func).close(collector);
-                }
+                endOfRecords(collector);
             }
         }
     }
 
     static class ExecuteMapPartitionWithDataPureFuncOperator<IN, DATA, OUT>
-            extends AbstractStreamOperator<OUT>
-            implements TwoInputStreamOperator<IN, DATA, OUT>,
-                    BoundedMultiInput,
-                    IterationListener<OUT> {
+            extends AbstractExecutePureFuncOperator<OUT>
+            implements TwoInputStreamOperator<IN, DATA, OUT>, BoundedMultiInput {
         private final MapPartitionWithDataPureFunc<IN, DATA, OUT> func;
-        private final int inputParallelism;
         private final TypeInformation<IN> inType;
         private final TypeInformation<DATA> dataType;
 
@@ -478,20 +435,17 @@ class FlinkExecutorUtils {
 
         private transient Collector<OUT> collector;
 
-        private transient StateHandler stateHandler;
-
         private transient ExecutorService executorService;
         private transient Future<?> future;
-
-        private transient PureFuncContextImpl pureFuncContext;
 
         public ExecuteMapPartitionWithDataPureFuncOperator(
                 MapPartitionWithDataPureFunc<IN, DATA, OUT> func,
                 int inputParallelism,
                 TypeInformation<IN> inType,
-                TypeInformation<DATA> dataType) {
+                TypeInformation<DATA> dataType,
+                boolean inIterations) {
+            super(func, inputParallelism, inIterations);
             this.func = func;
-            this.inputParallelism = inputParallelism;
             this.inType = inType;
             this.dataType = dataType;
         }
@@ -499,28 +453,23 @@ class FlinkExecutorUtils {
         @Override
         public void open() throws Exception {
             super.open();
-            pureFuncContext =
-                    new PureFuncContextImpl(
-                            getRuntimeContext().getNumberOfParallelSubtasks(),
-                            getRuntimeContext().getIndexOfThisSubtask(),
-                            inputParallelism);
-            if (func instanceof RichMapPartitionWithDataPureFunc) {
-                ((RichMapPartitionWithDataPureFunc<IN, DATA, OUT>) func)
-                        .setContext(pureFuncContext);
-                ((RichMapPartitionWithDataPureFunc<IN, DATA, OUT>) func).open();
-            }
             BasicThreadFactory factory =
                     new BasicThreadFactory.Builder()
                             .namingPattern(getOperatorName() + "-input-thread-%d")
                             .build();
-
             executorService = Executors.newSingleThreadExecutor(factory);
+        }
+
+        @Override
+        protected List<StateDesc<?, ?>> addtiionalStateDescs() {
+            return Collections.singletonList(
+                    StateDesc.singleValueState(
+                            "__data", dataType, null, (v) -> data = v, () -> data));
         }
 
         @Override
         public void initializeState(StateInitializationContext context) throws Exception {
             super.initializeState(context);
-
             inCache =
                     new ListStateWithCache<>(
                             inType.createSerializer(getExecutionConfig()),
@@ -528,28 +477,12 @@ class FlinkExecutorUtils {
                             getRuntimeContext(),
                             context,
                             config.getOperatorID());
-
-            if (null == stateHandler) {
-                List<StateDesc<?, ?>> stateDescs = new ArrayList<>();
-                if (func instanceof RichPureFunc) {
-                    stateDescs =
-                            new ArrayList<>(
-                                    ((RichMapPartitionWithDataPureFunc<IN, DATA, OUT>) func)
-                                            .getStateDescs());
-                }
-                stateDescs.add(
-                        StateDesc.singleValueState(
-                                "__data", dataType, null, (v) -> data = v, () -> data));
-                stateHandler = new StateHandler(stateDescs);
-            }
-            stateHandler.initializeState(context);
         }
 
         @Override
         public void snapshotState(StateSnapshotContext context) throws Exception {
             super.snapshotState(context);
             inCache.snapshotState(context);
-            stateHandler.snapshotState(context);
         }
 
         protected void startReceiveRecord() {
@@ -560,11 +493,9 @@ class FlinkExecutorUtils {
 
         protected void finishReceiveRecord() throws Exception {
             if (null != inputIterator && null != collector) {
-                Preconditions.checkState(!future.isDone());
                 inputIterator.end(future);
                 future.get();
                 inputIterator = null;
-                collector = null;
             }
         }
 
@@ -572,17 +503,9 @@ class FlinkExecutorUtils {
         public void onEpochWatermarkIncremented(
                 int epochWatermark, Context context, Collector<OUT> collector) throws Exception {
             finishReceiveRecord();
-
-            pureFuncContext.setIteration(epochWatermark);
-            if (func instanceof RichMapPartitionWithDataPureFunc) {
-                ((RichMapPartitionWithDataPureFunc<IN, DATA, OUT>) func).close(collector);
-            }
+            super.onEpochWatermarkIncremented(epochWatermark, context, collector);
             data = null;
             inCache.clear();
-
-            if (func instanceof RichMapPartitionWithDataPureFunc) {
-                ((RichMapPartitionWithDataPureFunc<IN, DATA, OUT>) func).open();
-            }
         }
 
         @Override
@@ -595,14 +518,12 @@ class FlinkExecutorUtils {
         @Override
         public void endInput(int inputId) throws Exception {
             if (1 == inputId) {
-                if (!pureFuncContext.isInIterations()) {
+                if (!inIterations) {
                     finishReceiveRecord();
-                    if (func instanceof RichMapPartitionWithDataPureFunc) {
-                        ((RichMapPartitionWithDataPureFunc<IN, DATA, OUT>) func).close(collector);
-                    }
                     executorService.shutdown();
                     Preconditions.checkState(executorService.isShutdown());
                 }
+                endOfRecords(collector);
             }
         }
 
@@ -616,9 +537,7 @@ class FlinkExecutorUtils {
             Preconditions.checkState(null == data);
             // TODO: fixit: data needs to be thread-safe.
             data = element.getValue();
-
             startReceiveRecord();
-
             for (IN value : inCache.get()) {
                 inputIterator.add(value, future);
             }
