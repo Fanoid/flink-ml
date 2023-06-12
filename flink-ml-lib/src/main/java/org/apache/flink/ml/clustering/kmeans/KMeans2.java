@@ -26,9 +26,10 @@ import org.apache.flink.ml.common.computation.builder.Data;
 import org.apache.flink.ml.common.computation.computation.CompositeComputation;
 import org.apache.flink.ml.common.computation.computation.IterationComputation;
 import org.apache.flink.ml.common.computation.purefunc.MapPureFunc;
-import org.apache.flink.ml.common.computation.purefunc.MapWithDataPureFunc;
 import org.apache.flink.ml.common.computation.purefunc.ReducePureFunc;
+import org.apache.flink.ml.common.computation.purefunc.RichMapPartitionWithDataPureFunc;
 import org.apache.flink.ml.common.computation.purefunc.RichMapPureFunc;
+import org.apache.flink.ml.common.computation.purefunc.StateDesc;
 import org.apache.flink.ml.common.distance.DistanceMeasure;
 import org.apache.flink.ml.linalg.BLAS;
 import org.apache.flink.ml.linalg.DenseVector;
@@ -71,17 +72,17 @@ public class KMeans2 implements Estimator<KMeans2, KMeansModel>, KMeansParams<KM
                         (value, out) -> out.collect(new VectorWithNorm(value)),
                         TypeInformation.of(VectorWithNorm.class));
 
-        Data<Iterable<VectorWithNorm>> cachedPoints = pointsWithNorm.cacheWithSequentialRead();
+        // TODO: support cache.
+        //        Data<Iterable<VectorWithNorm>> cachedPoints =
+        // pointsWithNorm.cacheWithSequentialRead();
 
         Data<Tuple2<Integer[], DenseVector[]>> centroidIdAndPoints =
-                centroids
-                        .broadcast()
-                        .map(
-                                new CentroidsUpdatePureFunc(distanceMeasure),
-                                cachedPoints,
-                                Types.TUPLE(
-                                        Types.OBJECT_ARRAY(Types.INT),
-                                        Types.OBJECT_ARRAY(DenseVectorTypeInfo.INSTANCE)));
+                pointsWithNorm.mapPartition(
+                        new CentroidsUpdatePureFunc(distanceMeasure),
+                        centroids.broadcast(),
+                        Types.TUPLE(
+                                Types.OBJECT_ARRAY(Types.INT),
+                                Types.OBJECT_ARRAY(DenseVectorTypeInfo.INSTANCE)));
 
         Data<KMeansModelData> newModelData =
                 centroidIdAndPoints
@@ -98,7 +99,8 @@ public class KMeans2 implements Estimator<KMeans2, KMeansModel>, KMeansParams<KM
                         new RichMapPureFunc<KMeansModelData, Boolean>() {
                             @Override
                             public void map(KMeansModelData value, Collector<Boolean> out) {
-                                out.collect(getContext().getIteration() >= maxIters);
+                                // TODO: make this consistent with Flink
+                                out.collect(getContext().getIteration() + 2 >= maxIters);
                             }
                         },
                         Types.BOOLEAN);
@@ -134,6 +136,7 @@ public class KMeans2 implements Estimator<KMeans2, KMeansModel>, KMeansParams<KM
 
         DataStream<DenseVector[]> initCentroids =
                 KMeans.selectRandomCentroids(points, getK(), getSeed());
+        initCentroids = initCentroids.map(d -> d);
         initCentroids.getTransformation().setParallelism(points.getParallelism());
 
         //        IterationConfig config =
@@ -179,27 +182,35 @@ public class KMeans2 implements Estimator<KMeans2, KMeansModel>, KMeansParams<KM
     }
 
     static class CentroidsUpdatePureFunc
-            implements MapWithDataPureFunc<
-                    DenseVector[], Iterable<VectorWithNorm>, Tuple2<Integer[], DenseVector[]>> {
+            extends RichMapPartitionWithDataPureFunc<
+                    VectorWithNorm, DenseVector[], Tuple2<Integer[], DenseVector[]>> {
 
         private final DistanceMeasure distanceMeasure;
+        private Integer[] counts;
+        private DenseVector[] newCentroids;
 
         CentroidsUpdatePureFunc(DistanceMeasure distanceMeasure) {
             this.distanceMeasure = distanceMeasure;
         }
 
         @Override
+        public void open() throws Exception {
+            counts = null;
+            newCentroids = null;
+        }
+
+        @Override
         public void map(
-                DenseVector[] centroids,
                 Iterable<VectorWithNorm> points,
+                DenseVector[] centroids,
                 Collector<Tuple2<Integer[], DenseVector[]>> out) {
             VectorWithNorm[] centroidsWithNorm = new VectorWithNorm[centroids.length];
             for (int i = 0; i < centroidsWithNorm.length; i++) {
                 centroidsWithNorm[i] = new VectorWithNorm(centroids[i]);
             }
 
-            DenseVector[] newCentroids = new DenseVector[centroids.length];
-            Integer[] counts = new Integer[centroids.length];
+            newCentroids = new DenseVector[centroids.length];
+            counts = new Integer[centroids.length];
             Arrays.fill(counts, 0);
             for (int i = 0; i < centroids.length; i++) {
                 newCentroids[i] = new DenseVector(centroids[i].size());
@@ -210,7 +221,18 @@ public class KMeans2 implements Estimator<KMeans2, KMeansModel>, KMeansParams<KM
                 BLAS.axpy(1.0, point.vector, newCentroids[closestCentroidId]);
                 counts[closestCentroidId]++;
             }
-            out.collect(Tuple2.of(counts, newCentroids));
+        }
+
+        @Override
+        public void close(Collector<Tuple2<Integer[], DenseVector[]>> out) throws Exception {
+            if (null != counts && null != newCentroids) {
+                out.collect(Tuple2.of(counts, newCentroids));
+            }
+        }
+
+        @Override
+        public List<StateDesc<?, ?>> getStateDescs() {
+            return Collections.emptyList();
         }
     }
 

@@ -108,7 +108,7 @@ class FlinkExecutorUtils {
                 collector = new ConsumerCollector<>(v -> output.collect(new StreamRecord<>(v)));
                 future = executorService.submit(() -> func.map(() -> inputIterator, collector));
             }
-            inputIterator.add(element.getValue());
+            inputIterator.add(element.getValue(), future);
         }
 
         @Override
@@ -163,9 +163,6 @@ class FlinkExecutorUtils {
         @Override
         public void onIterationTerminated(Context context, Collector<OUT> collector)
                 throws Exception {
-            if (func instanceof RichMapPartitionPureFunc) {
-                ((RichMapPartitionPureFunc<IN, OUT>) func).close(collector);
-            }
             executorService.shutdown();
             Preconditions.checkState(executorService.isShutdown());
         }
@@ -222,8 +219,14 @@ class FlinkExecutorUtils {
             return savedValue;
         }
 
-        public void add(T v) throws InterruptedException {
-            q.put(ValueOrEnd.of(v));
+        public void add(T v, Future<?> future) throws Exception {
+            while (!q.offer(ValueOrEnd.of(v), 1, TimeUnit.SECONDS)) {
+                try {
+                    future.get(0, TimeUnit.MILLISECONDS);
+                } catch (TimeoutException ignored) {
+                }
+                Preconditions.checkState(!future.isDone());
+            }
         }
 
         public void end(Future<?> future) throws Exception {
@@ -274,12 +277,14 @@ class FlinkExecutorUtils {
         @Override
         public void open() throws Exception {
             super.open();
+            pureFuncContext =
+                    new PureFuncContextImpl(
+                            getRuntimeContext().getNumberOfParallelSubtasks(),
+                            getRuntimeContext().getIndexOfThisSubtask(),
+                            inputParallelism);
             if (func instanceof RichMapPureFunc) {
-                pureFuncContext =
-                        new PureFuncContextImpl(
-                                getRuntimeContext().getNumberOfParallelSubtasks(),
-                                getRuntimeContext().getIndexOfThisSubtask(),
-                                inputParallelism);
+                // TODO: ad-hoc fix
+                pureFuncContext.setIteration(-1);
                 ((RichMapPureFunc<IN, OUT>) func).setContext(pureFuncContext);
                 ((RichMapPureFunc<IN, OUT>) func).open();
             }
@@ -294,8 +299,8 @@ class FlinkExecutorUtils {
         @Override
         public void onEpochWatermarkIncremented(
                 int epochWatermark, Context context, Collector<OUT> collector) throws Exception {
+            pureFuncContext.setIteration(epochWatermark);
             if (func instanceof RichMapPureFunc) {
-                pureFuncContext.setIteration(epochWatermark);
                 ((RichMapPureFunc<IN, OUT>) func).close(collector);
                 ((RichMapPureFunc<IN, OUT>) func).open();
             }
@@ -303,11 +308,7 @@ class FlinkExecutorUtils {
 
         @Override
         public void onIterationTerminated(Context context, Collector<OUT> collector)
-                throws Exception {
-            if (func instanceof RichMapPureFunc) {
-                ((RichMapPureFunc<IN, OUT>) func).close(collector);
-            }
-        }
+                throws Exception {}
 
         @Override
         public void initializeState(StateInitializationContext context) throws Exception {
@@ -330,8 +331,10 @@ class FlinkExecutorUtils {
 
         @Override
         public void endInput() throws Exception {
-            if (func instanceof RichMapPureFunc) {
-                ((RichMapPureFunc<IN, OUT>) func).close(collector);
+            if (!pureFuncContext.isInIterations()) {
+                if (func instanceof RichMapPureFunc) {
+                    ((RichMapPureFunc<IN, OUT>) func).close(collector);
+                }
             }
         }
     }
@@ -394,11 +397,7 @@ class FlinkExecutorUtils {
 
         @Override
         public void onIterationTerminated(Context context, Collector<OUT> collector)
-                throws Exception {
-            if (func instanceof RichMapWithDataPureFunc) {
-                ((RichMapWithDataPureFunc<IN, DATA, OUT>) func).close(collector);
-            }
-        }
+                throws Exception {}
 
         @Override
         public void initializeState(StateInitializationContext context) throws Exception {
@@ -481,6 +480,7 @@ class FlinkExecutorUtils {
 
         private transient StateHandler stateHandler;
 
+        private transient ExecutorService executorService;
         private transient Future<?> future;
 
         private transient PureFuncContextImpl pureFuncContext;
@@ -509,15 +509,12 @@ class FlinkExecutorUtils {
                         .setContext(pureFuncContext);
                 ((RichMapPartitionWithDataPureFunc<IN, DATA, OUT>) func).open();
             }
-            inputIterator = new InputIterator<>();
-
             BasicThreadFactory factory =
                     new BasicThreadFactory.Builder()
                             .namingPattern(getOperatorName() + "-input-thread-%d")
                             .build();
-            ExecutorService executorService = Executors.newSingleThreadExecutor(factory);
-            collector = new ConsumerCollector<>(v -> output.collect(new StreamRecord<>(v)));
-            future = executorService.submit(() -> func.map(() -> inputIterator, data, collector));
+
+            executorService = Executors.newSingleThreadExecutor(factory);
         }
 
         @Override
@@ -533,10 +530,13 @@ class FlinkExecutorUtils {
                             config.getOperatorID());
 
             if (null == stateHandler) {
-                List<StateDesc<?, ?>> stateDescs =
-                        new ArrayList<>(
-                                ((RichMapPartitionWithDataPureFunc<IN, DATA, OUT>) func)
-                                        .getStateDescs());
+                List<StateDesc<?, ?>> stateDescs = new ArrayList<>();
+                if (func instanceof RichPureFunc) {
+                    stateDescs =
+                            new ArrayList<>(
+                                    ((RichMapPartitionWithDataPureFunc<IN, DATA, OUT>) func)
+                                            .getStateDescs());
+                }
                 stateDescs.add(
                         StateDesc.singleValueState(
                                 "__data", dataType, null, (v) -> data = v, () -> data));
@@ -552,12 +552,35 @@ class FlinkExecutorUtils {
             stateHandler.snapshotState(context);
         }
 
+        protected void startReceiveRecord() {
+            inputIterator = new InputIterator<>();
+            collector = new ConsumerCollector<>(v -> output.collect(new StreamRecord<>(v)));
+            future = executorService.submit(() -> func.map(() -> inputIterator, data, collector));
+        }
+
+        protected void finishReceiveRecord() throws Exception {
+            if (null != inputIterator && null != collector) {
+                Preconditions.checkState(!future.isDone());
+                inputIterator.end(future);
+                future.get();
+                inputIterator = null;
+                collector = null;
+            }
+        }
+
         @Override
         public void onEpochWatermarkIncremented(
                 int epochWatermark, Context context, Collector<OUT> collector) throws Exception {
+            finishReceiveRecord();
+
             pureFuncContext.setIteration(epochWatermark);
             if (func instanceof RichMapPartitionWithDataPureFunc) {
                 ((RichMapPartitionWithDataPureFunc<IN, DATA, OUT>) func).close(collector);
+            }
+            data = null;
+            inCache.clear();
+
+            if (func instanceof RichMapPartitionWithDataPureFunc) {
                 ((RichMapPartitionWithDataPureFunc<IN, DATA, OUT>) func).open();
             }
         }
@@ -565,26 +588,27 @@ class FlinkExecutorUtils {
         @Override
         public void onIterationTerminated(Context context, Collector<OUT> collector)
                 throws Exception {
-            if (func instanceof RichMapPartitionWithDataPureFunc) {
-                ((RichMapPartitionWithDataPureFunc<IN, DATA, OUT>) func).close(collector);
-            }
+            executorService.shutdown();
+            Preconditions.checkState(executorService.isShutdown());
         }
 
         @Override
         public void endInput(int inputId) throws Exception {
             if (1 == inputId) {
-                Preconditions.checkState(!future.isDone());
-                inputIterator.end(future);
-                future.get();
-                if (func instanceof RichMapPartitionWithDataPureFunc) {
-                    ((RichMapPartitionWithDataPureFunc<IN, DATA, OUT>) func).close(collector);
+                if (!pureFuncContext.isInIterations()) {
+                    finishReceiveRecord();
+                    if (func instanceof RichMapPartitionWithDataPureFunc) {
+                        ((RichMapPartitionWithDataPureFunc<IN, DATA, OUT>) func).close(collector);
+                    }
+                    executorService.shutdown();
+                    Preconditions.checkState(executorService.isShutdown());
                 }
             }
         }
 
         @Override
         public void processElement1(StreamRecord<IN> element) throws Exception {
-            inputIterator.add(element.getValue());
+            inputIterator.add(element.getValue(), future);
         }
 
         @Override
@@ -592,8 +616,11 @@ class FlinkExecutorUtils {
             Preconditions.checkState(null == data);
             // TODO: fixit: data needs to be thread-safe.
             data = element.getValue();
+
+            startReceiveRecord();
+
             for (IN value : inCache.get()) {
-                inputIterator.add(value);
+                inputIterator.add(value, future);
             }
             inCache.clear();
         }

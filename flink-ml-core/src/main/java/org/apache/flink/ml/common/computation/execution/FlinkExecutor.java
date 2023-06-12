@@ -19,6 +19,7 @@
 package org.apache.flink.ml.common.computation.execution;
 
 import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.iteration.DataStreamList;
 import org.apache.flink.iteration.IterationBody;
@@ -289,13 +290,24 @@ public class FlinkExecutor implements ComputationExecutor<DataStream> {
                             feedback.set(varIndex, stepOutputs.get(outIndex));
                         }
 
+                        DataStream<Boolean> isEnd =
+                                ((DataStream<Boolean>)
+                                                stepOutputs.get(computation.endCriteriaIndex))
+                                        .flatMap(
+                                                (v, out) -> {
+                                                    if (!v) {
+                                                        out.collect(v);
+                                                    }
+                                                },
+                                                Types.BOOLEAN);
+
                         return new IterationBodyResult(
                                 DataStreamList.of(feedback.toArray(new DataStream[0])),
                                 DataStreamList.of(
                                         computation.outputMapping.stream()
                                                 .map(stepOutputs::get)
                                                 .toArray(DataStream[]::new)),
-                                stepOutputs.get(computation.endCriteriaIndex));
+                                isEnd);
                     }
                 };
 

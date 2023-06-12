@@ -66,4 +66,8 @@ public class PureFuncContextImpl implements PureFuncContext {
         this.inIterations = true;
         this.interation = iteration;
     }
+
+    public boolean isInIterations() {
+        return inIterations;
+    }
 }
