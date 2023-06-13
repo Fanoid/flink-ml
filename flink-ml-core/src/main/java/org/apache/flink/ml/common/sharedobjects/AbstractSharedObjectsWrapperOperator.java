@@ -19,9 +19,9 @@
 package org.apache.flink.ml.common.sharedobjects;
 
 import org.apache.flink.api.common.typeutils.TypeSerializer;
-import org.apache.flink.core.memory.ManagedMemoryUseCase;
 import org.apache.flink.iteration.IterationListener;
 import org.apache.flink.iteration.proxy.state.ProxyStreamOperatorStateContext;
+import org.apache.flink.iteration.utils.CompatibilityUtils;
 import org.apache.flink.metrics.groups.OperatorMetricGroup;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.execution.Environment;
@@ -197,8 +197,8 @@ abstract class AbstractSharedObjectsWrapperOperator<T, S extends StreamOperator<
                         keySerializer,
                         containingTask.getCancelables(),
                         metrics,
-                        streamConfig.getManagedMemoryFractionOperatorUseCaseOfSlot(
-                                ManagedMemoryUseCase.STATE_BACKEND,
+                        CompatibilityUtils.getManagedMemoryFractionForStateBackend(
+                                streamConfig,
                                 containingTask
                                         .getEnvironment()
                                         .getTaskManagerInfo()
