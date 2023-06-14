@@ -19,14 +19,10 @@
 package org.apache.flink.ml.common.computation.purefunc;
 
 import org.apache.flink.annotation.Experimental;
-import org.apache.flink.api.common.functions.MapFunction;
-import org.apache.flink.api.common.functions.RichMapFunction;
-import org.apache.flink.api.common.functions.RuntimeContext;
 
 /**
- * Similar to {@link MapFunction} but with an addition broadcast parameter. Compared to {@link
- * RichMapFunction} with {@link RuntimeContext#getBroadcastVariable}, this interface can be used in
- * a broader situations since it involves no Flink runtime.
+ * Base interface for Reduce functions. Reduce functions combine groups of elements to a single
+ * value, by taking always two elements and combining them into one.
  *
  * @param <T> Type of input/output elements.
  */

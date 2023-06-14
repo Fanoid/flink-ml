@@ -29,7 +29,7 @@ import org.apache.flink.api.java.typeutils.TypeExtractor;
 import org.apache.flink.iteration.IterationListener;
 import org.apache.flink.iteration.datacache.nonkeyed.ListStateWithCache;
 import org.apache.flink.iteration.operator.OperatorStateUtils;
-import org.apache.flink.ml.common.computation.purefunc.ConsumerCollector;
+import org.apache.flink.ml.common.computation.execution.ConsumerCollector;
 import org.apache.flink.ml.common.computation.purefunc.MapWithDataPureFunc;
 import org.apache.flink.ml.common.computation.purefunc.PureFuncContextImpl;
 import org.apache.flink.ml.common.computation.purefunc.RichPureFunc;

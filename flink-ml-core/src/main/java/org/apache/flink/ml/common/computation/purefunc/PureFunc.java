@@ -23,9 +23,9 @@ import org.apache.flink.annotation.Experimental;
 import java.io.Serializable;
 
 /**
- * The base interface for all pure user-defined functions. `pure` here means that the function is
- * independent of the Flink runtime, making it applicable in a wider range of situations than {@link
- * org.apache.flink.api.common.functions.Function}.
+ * The base interface for all pure user-defined functions with 1 output. `pure` here means that the
+ * function is independent of the Flink runtime, making it applicable in a wider range of situations
+ * than {@link org.apache.flink.api.common.functions.Function}.
  */
 @Experimental
 public interface PureFunc<OUT> extends Serializable {

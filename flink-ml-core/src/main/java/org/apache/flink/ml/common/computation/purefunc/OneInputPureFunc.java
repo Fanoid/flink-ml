@@ -20,11 +20,7 @@ package org.apache.flink.ml.common.computation.purefunc;
 
 import org.apache.flink.annotation.Experimental;
 
-/**
- * The base interface for all pure user-defined functions. `pure` here means that the function is
- * independent of the Flink runtime, making it applicable in a wider range of situations than {@link
- * org.apache.flink.api.common.functions.Function}.
- */
+/** {@link PureFunc} with one input. */
 @Experimental
 public interface OneInputPureFunc<IN, OUT> extends PureFunc<OUT> {
     @Override

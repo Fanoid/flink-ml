@@ -21,7 +21,6 @@ package org.apache.flink.ml.common.computation.execution;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.iteration.IterationListener;
 import org.apache.flink.iteration.datacache.nonkeyed.ListStateWithCache;
-import org.apache.flink.ml.common.computation.purefunc.ConsumerCollector;
 import org.apache.flink.ml.common.computation.purefunc.MapPartitionPureFunc;
 import org.apache.flink.ml.common.computation.purefunc.MapPartitionWithDataPureFunc;
 import org.apache.flink.ml.common.computation.purefunc.MapPureFunc;

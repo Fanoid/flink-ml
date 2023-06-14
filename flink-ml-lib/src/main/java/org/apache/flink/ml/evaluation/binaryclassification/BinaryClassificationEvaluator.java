@@ -34,7 +34,7 @@ import org.apache.flink.api.java.typeutils.RowTypeInfo;
 import org.apache.flink.iteration.operator.OperatorStateUtils;
 import org.apache.flink.ml.api.AlgoOperator;
 import org.apache.flink.ml.common.broadcast.BroadcastUtils;
-import org.apache.flink.ml.common.computation.purefunc.ConsumerCollector;
+import org.apache.flink.ml.common.computation.execution.ConsumerCollector;
 import org.apache.flink.ml.common.computation.purefunc.MapWithDataPureFunc;
 import org.apache.flink.ml.common.datastream.DataStreamUtils;
 import org.apache.flink.ml.linalg.Vector;

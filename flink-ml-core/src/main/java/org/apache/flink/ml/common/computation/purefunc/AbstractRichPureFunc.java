@@ -21,6 +21,9 @@ package org.apache.flink.ml.common.computation.purefunc;
 import org.apache.flink.annotation.Experimental;
 import org.apache.flink.util.Collector;
 
+import java.util.Collections;
+import java.util.List;
+
 /** An abstract stub implementation for rich pure user-defined functions. */
 @Experimental
 public abstract class AbstractRichPureFunc<OUT> implements RichPureFunc<OUT> {
@@ -43,5 +46,10 @@ public abstract class AbstractRichPureFunc<OUT> implements RichPureFunc<OUT> {
     @Override
     public void setContext(PureFuncContext context) {
         this.context = context;
+    }
+
+    @Override
+    public List<StateDesc<?, ?>> getStateDescs() {
+        return Collections.emptyList();
     }
 }

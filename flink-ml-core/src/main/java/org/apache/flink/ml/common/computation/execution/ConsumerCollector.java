@@ -16,16 +16,34 @@
  * limitations under the License.
  */
 
-package org.apache.flink.ml.common.computation.purefunc;
+package org.apache.flink.ml.common.computation.execution;
+
+import org.apache.flink.annotation.Internal;
+import org.apache.flink.util.Collector;
 
 import java.io.Serializable;
 import java.util.function.Consumer;
 
-/**
- * Serialized version of {@link Consumer}.
- *
- * @param <T> The type of value to be consumed.
- */
-public interface SerializedConsumerWithException<T> extends Serializable {
-    void accept(T t) throws Exception;
+@Internal
+public class ConsumerCollector<T> implements Collector<T> {
+    private final SerializedConsumer<T> consumer;
+
+    public ConsumerCollector(SerializedConsumer<T> consumer) {
+        this.consumer = consumer;
+    }
+
+    @Override
+    public void collect(T record) {
+        consumer.accept(record);
+    }
+
+    @Override
+    public void close() {}
+
+    /**
+     * Serialized version of {@link Consumer}.
+     *
+     * @param <T> The type of value to be consumed.
+     */
+    interface SerializedConsumer<T> extends Serializable, Consumer<T> {}
 }

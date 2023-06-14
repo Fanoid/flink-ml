@@ -23,11 +23,35 @@ import org.apache.flink.annotation.Experimental;
 /** Context for pure functions. */
 @Experimental
 public interface PureFuncContext {
+
+    /**
+     * Gets the number of parallel subtasks.
+     *
+     * @return The number of parallel subtasks.
+     */
     int getNumSubtasks();
 
+    /**
+     * Gets the index of current subtask.
+     *
+     * @return The index of current subtask.
+     */
     int getSubtaskId();
 
+    /**
+     * Gets the parallelism of the input of this pure function.
+     *
+     * @return The parallelism of the input.
+     */
     int getInputParallelism();
 
+    /**
+     * Gets the iteration round when this function is called inside iterations. Otherwise, exception
+     * is thrown.
+     *
+     * <p>TODO: set the iteration rounds carefully, because Flink iteration rounds is not intuitive.
+     *
+     * @return The iteration round.
+     */
     int getIteration();
 }

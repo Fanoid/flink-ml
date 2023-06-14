@@ -19,16 +19,12 @@
 package org.apache.flink.ml.common.computation.purefunc;
 
 import org.apache.flink.annotation.Experimental;
-import org.apache.flink.api.common.functions.MapFunction;
-import org.apache.flink.api.common.functions.RichMapFunction;
-import org.apache.flink.api.common.functions.RuntimeContext;
 
 /**
- * Similar to {@link MapFunction} but with an addition broadcast parameter. Compared to {@link
- * RichMapFunction} with {@link RuntimeContext#getBroadcastVariable}, this interface can be used in
- * a broader situations since it involves no Flink runtime.
+ * Rich variant of the {@link MapPartitionWithDataPureFunc}.
  *
  * @param <IN> Type of input elements.
+ * @param <DATA> Type of data element.
  * @param <OUT> Type of output elements.
  */
 @Experimental

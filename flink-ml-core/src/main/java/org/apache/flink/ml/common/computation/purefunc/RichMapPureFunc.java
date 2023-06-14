@@ -19,26 +19,13 @@
 package org.apache.flink.ml.common.computation.purefunc;
 
 import org.apache.flink.annotation.Experimental;
-import org.apache.flink.api.common.functions.MapFunction;
-import org.apache.flink.api.common.functions.RichMapFunction;
-import org.apache.flink.api.common.functions.RuntimeContext;
-
-import java.util.Collections;
-import java.util.List;
 
 /**
- * Similar to {@link MapFunction} but with an addition broadcast parameter. Compared to {@link
- * RichMapFunction} with {@link RuntimeContext#getBroadcastVariable}, this interface can be used in
- * a broader situations since it involves no Flink runtime.
+ * Rich variant of the {@link MapPureFunc}.
  *
  * @param <IN> Type of input elements.
  * @param <OUT> Type of output elements.
  */
 @Experimental
 public abstract class RichMapPureFunc<IN, OUT> extends AbstractRichPureFunc<OUT>
-        implements MapPureFunc<IN, OUT> {
-    @Override
-    public List<StateDesc<?, ?>> getStateDescs() {
-        return Collections.emptyList();
-    }
-}
+        implements MapPureFunc<IN, OUT> {}
