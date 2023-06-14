@@ -43,7 +43,6 @@ import org.apache.flink.ml.common.computation.purefunc.MapPartitionPureFunc;
 import org.apache.flink.ml.common.computation.purefunc.MapPartitionWithDataPureFunc;
 import org.apache.flink.ml.common.computation.purefunc.MapPureFunc;
 import org.apache.flink.ml.common.computation.purefunc.MapWithDataPureFunc;
-import org.apache.flink.ml.common.computation.purefunc.PureFunc;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.util.Preconditions;
 
@@ -126,15 +125,6 @@ public class FlinkExecutor implements ComputationExecutor<DataStream> {
                                 in.getType(),
                                 data.getType(),
                                 inIterations));
-    }
-
-    @Override
-    public <OUT> DataStream<OUT> executeOtherPureFunc(
-            List<DataStream> inputs,
-            PureFunc<OUT> func,
-            String name,
-            TypeInformation<OUT> outType) {
-        return (DataStream<OUT>) func.executeOnFlink((List<DataStream<?>>) (List) inputs).get(0);
     }
 
     private List<DataStream<?>> calcOutputDataListRecords(

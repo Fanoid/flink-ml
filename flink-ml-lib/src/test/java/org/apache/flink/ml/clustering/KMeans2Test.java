@@ -18,9 +18,12 @@
 
 package org.apache.flink.ml.clustering;
 
+import org.apache.flink.ml.clustering.kmeans.KMeans;
 import org.apache.flink.ml.clustering.kmeans.KMeans2;
 import org.apache.flink.ml.clustering.kmeans.KMeansModel;
 import org.apache.flink.ml.clustering.kmeans.KMeansModelData;
+import org.apache.flink.ml.common.computation.computation.IterationComputation;
+import org.apache.flink.ml.common.distance.DistanceMeasure;
 import org.apache.flink.ml.common.distance.EuclideanDistanceMeasure;
 import org.apache.flink.ml.linalg.DenseVector;
 import org.apache.flink.ml.linalg.SparseVector;
@@ -219,6 +222,41 @@ public class KMeans2Test extends AbstractTestBase {
                 KMeansModelData.getModelDataStream(model.getModelData()[0]);
         List<KMeansModelData> collectedModelData =
                 IteratorUtils.toList(modelData.executeAndCollect());
+        assertEquals(1, collectedModelData.size());
+        DenseVector[] centroids = collectedModelData.get(0).centroids;
+        assertEquals(2, centroids.length);
+        Arrays.sort(centroids, Comparator.comparingDouble(vector -> vector.get(0)));
+        assertArrayEquals(centroids[0].values, new double[] {0.1, 0.1}, 1e-5);
+        assertArrayEquals(centroids[1].values, new double[] {9.2, 0.2}, 1e-5);
+    }
+
+    @Test
+    public void testLocalGetModelData() throws Exception {
+        KMeans2 kmeans = new KMeans2().setMaxIter(2).setK(2);
+
+        IterationComputation iterationComputation =
+                KMeans2.makeIterationComputation(
+                        kmeans.getMaxIter(),
+                        DistanceMeasure.getInstance(kmeans.getDistanceMeasure()));
+
+        DataStream<DenseVector> points =
+                tEnv.toDataStream(dataTable.as())
+                        .map(row -> ((Vector) row.getField(kmeans.getFeaturesCol())).toDense());
+        //noinspection unchecked
+        List<DenseVector> pointsList = IteratorUtils.toList(points.executeAndCollect());
+
+        DataStream<DenseVector[]> initCentroids =
+                KMeans.selectRandomCentroids(points, kmeans.getK(), kmeans.getSeed());
+        initCentroids = initCentroids.map(d -> d);
+        initCentroids.getTransformation().setParallelism(points.getParallelism());
+        //noinspection unchecked
+        List<DenseVector[]> initCentroidsList =
+                IteratorUtils.toList(initCentroids.executeAndCollect());
+
+        List<Iterable<?>> outputs =
+                iterationComputation.execute(Arrays.asList(initCentroidsList, pointsList));
+
+        List<KMeansModelData> collectedModelData = IteratorUtils.toList(outputs.get(0).iterator());
         assertEquals(1, collectedModelData.size());
         DenseVector[] centroids = collectedModelData.get(0).centroids;
         assertEquals(2, centroids.length);

@@ -55,9 +55,6 @@ interface ComputationExecutor<T> {
             String name,
             TypeInformation<OUT> outType);
 
-    <OUT> T executeOtherPureFunc(
-            List<T> inputs, PureFunc<OUT> func, String name, TypeInformation<OUT> outType);
-
     @SuppressWarnings({"unchecked", "rawtypes"})
     default T execute(PureFuncComputation computation, List<T> inputs) {
         PureFunc<?> func = computation.getFunc();
@@ -89,7 +86,7 @@ interface ComputationExecutor<T> {
                             name,
                             outType);
         } else {
-            return (T) executeOtherPureFunc(inputs, (PureFunc) func, name, outType);
+            throw new UnsupportedOperationException();
         }
     }
 

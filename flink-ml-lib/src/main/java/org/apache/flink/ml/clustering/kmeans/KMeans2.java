@@ -86,16 +86,21 @@ public class KMeans2 implements Estimator<KMeans2, KMeansModel>, KMeansParams<KM
 
         Data<KMeansModelData> newModelData =
                 centroidIdAndPoints
-                        .reduce(new CentroidsUpdateReducer())
-                        .map(new ModelDataGenerator(), TypeInformation.of(KMeansModelData.class));
+                        .reduce("CentroidsUpdateReducer", new CentroidsUpdateReducer())
+                        .map(
+                                "ModelDataGenerator",
+                                new ModelDataGenerator(),
+                                TypeInformation.of(KMeansModelData.class));
 
         Data<DenseVector[]> newCentroids =
                 newModelData.map(
+                        "CollectCentroids",
                         (value, out) -> out.collect(value.centroids),
                         Types.OBJECT_ARRAY(DenseVectorTypeInfo.INSTANCE));
 
         Data<Boolean> endCriteria =
                 newModelData.map(
+                        "endCriteria",
                         new RichMapPureFunc<KMeansModelData, Boolean>() {
                             @Override
                             public void map(KMeansModelData value, Collector<Boolean> out) {
@@ -107,6 +112,7 @@ public class KMeans2 implements Estimator<KMeans2, KMeansModel>, KMeansParams<KM
 
         Data<KMeansModelData> outputModel =
                 newModelData.map(
+                        "CollectFinalModel",
                         (value, isFinal, out) -> {
                             if (isFinal) {
                                 out.collect(value);

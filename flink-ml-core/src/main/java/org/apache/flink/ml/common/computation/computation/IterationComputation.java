@@ -22,6 +22,7 @@ import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.iteration.Iterations;
 import org.apache.flink.ml.common.computation.execution.FlinkExecutor;
 import org.apache.flink.ml.common.computation.execution.FlinkIterationExecutor;
+import org.apache.flink.ml.common.computation.execution.IterableExecutor;
 import org.apache.flink.streaming.api.datastream.DataStream;
 
 import java.util.List;
@@ -95,7 +96,7 @@ public class IterationComputation implements Computation {
 
     @Override
     public List<Iterable<?>> execute(List<Iterable<?>> inputs) {
-        return Computation.super.execute(inputs);
+        return IterableExecutor.getInstance().execute(this, inputs);
     }
 
     @Override

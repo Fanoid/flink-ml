@@ -19,7 +19,6 @@
 package org.apache.flink.ml.common.computation.purefunc;
 
 import org.apache.flink.annotation.Experimental;
-import org.apache.flink.ml.common.computation.execution.Executable;
 
 import java.io.Serializable;
 
@@ -29,6 +28,6 @@ import java.io.Serializable;
  * org.apache.flink.api.common.functions.Function}.
  */
 @Experimental
-public interface PureFunc<OUT> extends Serializable, Executable {
+public interface PureFunc<OUT> extends Serializable {
     int getNumInputs();
 }
