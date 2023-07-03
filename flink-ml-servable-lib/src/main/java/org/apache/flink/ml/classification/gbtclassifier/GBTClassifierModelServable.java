@@ -37,6 +37,8 @@ import org.eclipse.collections.impl.map.mutable.primitive.IntDoubleHashMap;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -47,7 +49,7 @@ import java.util.Map;
 public class GBTClassifierModelServable
         implements ModelServable<GBTClassifierModelServable>,
                 GBTClassifierModelParams<GBTClassifierModelServable> {
-
+    public static final String MODEL_DATA_PATH = "model_data";
     private static final Sigmoid sigmoid = new Sigmoid();
 
     private final Map<Param<?>, Object> paramMap = new HashMap<>();
@@ -66,11 +68,10 @@ public class GBTClassifierModelServable
     public static GBTClassifierModelServable load(String path) throws IOException {
         GBTClassifierModelServable servable =
                 ServableReadWriteUtils.loadServableParam(path, GBTClassifierModelServable.class);
-
+        Path tmpPath = Paths.get(path);
+        Path mergePath = tmpPath.resolve(MODEL_DATA_PATH);
         // See BaseGBTModel#MODEL_DATA_PATH
-        final String modelDataPath = "model_data";
-        try (InputStream modelData =
-                ServableReadWriteUtils.loadModelData(path + "/" + modelDataPath)) {
+        try (InputStream modelData = ServableReadWriteUtils.loadModelData(mergePath.toString())) {
             servable.setModelData(modelData);
             return servable;
         }

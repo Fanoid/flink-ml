@@ -27,10 +27,13 @@ import org.apache.flink.ml.servable.api.Row;
 import org.apache.flink.ml.servable.types.BasicType;
 import org.apache.flink.ml.servable.types.DataType;
 import org.apache.flink.ml.servable.types.DataTypes;
+import org.apache.flink.ml.util.ParamUtils;
+import org.apache.flink.ml.util.ServableReadWriteUtils;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
 
@@ -82,6 +85,18 @@ public class PaiLogisticRegressionModelServable extends LogisticRegressionModelS
         }
         if (mapDesignerParams.containsKey("rawPredictionCol")) {
             setRawPredictionCol((String) mapDesignerParams.get("rawPredictionCol"));
+        }
+    }
+
+    public static PaiLogisticRegressionModelServable load(String path) throws IOException {
+        LogisticRegressionModelServable servable =
+                ServableReadWriteUtils.loadServableParam(
+                        path, LogisticRegressionModelServable.class);
+        PaiLogisticRegressionModelServable paiServable = new PaiLogisticRegressionModelServable();
+        ParamUtils.updateExistingParams(paiServable, servable.getParamMap());
+        try (InputStream modelData = ServableReadWriteUtils.loadModelData(path)) {
+            paiServable.setModelData(modelData);
+            return paiServable;
         }
     }
 }

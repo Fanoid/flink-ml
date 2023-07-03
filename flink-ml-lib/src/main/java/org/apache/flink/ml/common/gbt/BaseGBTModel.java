@@ -49,9 +49,10 @@ import java.io.OutputStream;
 import java.util.HashMap;
 import java.util.Map;
 
+import static org.apache.flink.ml.classification.gbtclassifier.GBTClassifierModelServable.MODEL_DATA_PATH;
+
 /** Base model computed by {@link GBTClassifier} or {@link GBTRegressor}. */
 public abstract class BaseGBTModel<T extends BaseGBTModel<T>> implements Model<T> {
-    protected static final String MODEL_DATA_PATH = "model_data";
     protected static final String FEATURE_IMPORTANCE_PATH = "feature_importance";
 
     protected final Map<Param<?>, Object> paramMap = new HashMap<>();

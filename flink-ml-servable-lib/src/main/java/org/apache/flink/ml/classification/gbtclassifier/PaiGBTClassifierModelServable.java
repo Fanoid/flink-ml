@@ -26,9 +26,14 @@ import org.apache.flink.ml.servable.api.PaiModelServable;
 import org.apache.flink.ml.servable.api.Row;
 import org.apache.flink.ml.servable.types.DataType;
 import org.apache.flink.ml.servable.types.DataTypes;
+import org.apache.flink.ml.util.ParamUtils;
+import org.apache.flink.ml.util.ServableReadWriteUtils;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Comparator;
@@ -40,7 +45,6 @@ import java.util.stream.Collectors;
 @Deprecated
 public class PaiGBTClassifierModelServable extends GBTClassifierModelServable
         implements PaiModelServable<PaiGBTClassifierModelServable> {
-
     private String predictionDetailCol;
 
     public PaiGBTClassifierModelServable() {
@@ -88,5 +92,18 @@ public class PaiGBTClassifierModelServable extends GBTClassifierModelServable
         }
         output.addColumn(predictionDetailCol, DataTypes.STRING, predictDetails);
         return output;
+    }
+
+    public static PaiGBTClassifierModelServable load(String path) throws IOException {
+        GBTClassifierModelServable servable =
+                ServableReadWriteUtils.loadServableParam(path, GBTClassifierModelServable.class);
+        PaiGBTClassifierModelServable paiServable = new PaiGBTClassifierModelServable();
+        ParamUtils.updateExistingParams(paiServable, servable.getParamMap());
+        Path tmpPath = Paths.get(path);
+        Path mergePath = tmpPath.resolve(MODEL_DATA_PATH);
+        try (InputStream modelData = ServableReadWriteUtils.loadModelData(mergePath.toString())) {
+            paiServable.setModelData(modelData);
+            return paiServable;
+        }
     }
 }
