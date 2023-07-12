@@ -27,7 +27,6 @@ import org.apache.flink.ml.servable.api.Row;
 import org.apache.flink.ml.servable.types.BasicType;
 import org.apache.flink.ml.servable.types.DataType;
 import org.apache.flink.ml.servable.types.DataTypes;
-import org.apache.flink.ml.util.ParamUtils;
 import org.apache.flink.ml.util.ServableReadWriteUtils;
 
 import java.io.ByteArrayInputStream;
@@ -36,6 +35,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
+
+import static org.apache.flink.ml.util.FileUtils.loadMetadata;
 
 /**
  * A Servable which can be used to classifies data in online inference for Pai. This is just a demo
@@ -89,11 +90,9 @@ public class PaiLogisticRegressionModelServable extends LogisticRegressionModelS
     }
 
     public static PaiLogisticRegressionModelServable load(String path) throws IOException {
-        LogisticRegressionModelServable servable =
-                ServableReadWriteUtils.loadServableParam(
-                        path, LogisticRegressionModelServable.class);
+        Map<String, Object> designerParams = (Map<String, Object>) loadMetadata(path, "");
         PaiLogisticRegressionModelServable paiServable = new PaiLogisticRegressionModelServable();
-        ParamUtils.updateExistingParams(paiServable, servable.getParamMap());
+        paiServable.setDesignerParams(designerParams);
         try (InputStream modelData = ServableReadWriteUtils.loadModelData(path)) {
             paiServable.setModelData(modelData);
             return paiServable;

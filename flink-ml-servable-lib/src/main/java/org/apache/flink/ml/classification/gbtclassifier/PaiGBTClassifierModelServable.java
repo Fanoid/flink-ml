@@ -26,7 +26,6 @@ import org.apache.flink.ml.servable.api.PaiModelServable;
 import org.apache.flink.ml.servable.api.Row;
 import org.apache.flink.ml.servable.types.DataType;
 import org.apache.flink.ml.servable.types.DataTypes;
-import org.apache.flink.ml.util.ParamUtils;
 import org.apache.flink.ml.util.ServableReadWriteUtils;
 
 import java.io.ByteArrayInputStream;
@@ -40,6 +39,8 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+
+import static org.apache.flink.ml.util.FileUtils.loadMetadata;
 
 /** A Servable which can be used to classifies data in online inference. */
 @Deprecated
@@ -95,10 +96,9 @@ public class PaiGBTClassifierModelServable extends GBTClassifierModelServable
     }
 
     public static PaiGBTClassifierModelServable load(String path) throws IOException {
-        GBTClassifierModelServable servable =
-                ServableReadWriteUtils.loadServableParam(path, GBTClassifierModelServable.class);
+        Map<String, Object> designerParams = (Map<String, Object>) loadMetadata(path, "");
         PaiGBTClassifierModelServable paiServable = new PaiGBTClassifierModelServable();
-        ParamUtils.updateExistingParams(paiServable, servable.getParamMap());
+        paiServable.setDesignerParams(designerParams);
         Path tmpPath = Paths.get(path);
         Path mergePath = tmpPath.resolve(MODEL_DATA_PATH);
         try (InputStream modelData = ServableReadWriteUtils.loadModelData(mergePath.toString())) {
