@@ -71,7 +71,7 @@ class SharedObjectsContextImpl implements SharedObjectsContext, Serializable {
 
     class SharedItemGetterImpl implements SharedItemGetter {
         @Override
-        public <T> T getOffset(ItemDescriptor<T> key, int offset) {
+        public <T> T get(ItemDescriptor<T> key, int offset) {
             return getAt(key, epoch + offset);
         }
 

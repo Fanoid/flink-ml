@@ -67,10 +67,8 @@ public class TerminationOperator extends AbstractSharedObjectsStreamOperator<Int
                             context.output(
                                     modelDataOutputTag,
                                     GBTModelDataUtil.from(
-                                            getter.getOffset(
-                                                    SharedObjectsConstants.TRAIN_CONTEXT, -1),
-                                            getter.getOffset(
-                                                    SharedObjectsConstants.ALL_TREES, -1))));
+                                            getter.get(SharedObjectsConstants.TRAIN_CONTEXT, -1),
+                                            getter.get(SharedObjectsConstants.ALL_TREES, -1))));
         }
     }
 }

@@ -59,7 +59,7 @@ public interface SharedObjectsContext {
          * @return The value of the shared object.
          * @param <T> The type of the shared object.
          */
-        <T> T getOffset(ItemDescriptor<T> key, int offset);
+        <T> T get(ItemDescriptor<T> key, int offset);
 
         /**
          * Get the value of the shared object identified by `key` with current epoch watermark.
@@ -69,7 +69,7 @@ public interface SharedObjectsContext {
          * @param <T> The type of the shared object.
          */
         default <T> T get(ItemDescriptor<T> key) {
-            return getOffset(key, 0);
+            return get(key, 0);
         }
     }
 

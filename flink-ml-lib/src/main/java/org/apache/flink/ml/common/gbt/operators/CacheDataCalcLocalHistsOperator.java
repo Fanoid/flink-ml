@@ -189,7 +189,7 @@ public class CacheDataCalcLocalHistsOperator
                         instancesCollecting.clear();
 
                         TrainContext rawTrainContext =
-                                getter.getOffset(SharedObjectsConstants.TRAIN_CONTEXT, -1);
+                                getter.get(SharedObjectsConstants.TRAIN_CONTEXT, -1);
                         TrainContext trainContext =
                                 new TrainContextInitializer(strategy)
                                         .init(
@@ -235,9 +235,9 @@ public class CacheDataCalcLocalHistsOperator
                     boolean needInitTree = true;
                     int numTrees = 0;
                     if (epochWatermark > 0) {
-                        pgh = getter.getOffset(SharedObjectsConstants.PREDS_GRADS_HESSIANS, -1);
-                        needInitTree = getter.getOffset(SharedObjectsConstants.NEED_INIT_TREE, -1);
-                        numTrees = getter.getOffset(SharedObjectsConstants.ALL_TREES, -1).size();
+                        pgh = getter.get(SharedObjectsConstants.PREDS_GRADS_HESSIANS, -1);
+                        needInitTree = getter.get(SharedObjectsConstants.NEED_INIT_TREE, -1);
+                        numTrees = getter.get(SharedObjectsConstants.ALL_TREES, -1).size();
                     }
                     // In the first round, use prior as the predictions.
                     if (0 == pgh.length) {
@@ -267,8 +267,8 @@ public class CacheDataCalcLocalHistsOperator
                         setter.set(SharedObjectsConstants.HAS_INITED_TREE, true);
                     } else {
                         // Otherwise, uses the swapped instance indices.
-                        indices = getter.getOffset(SharedObjectsConstants.SWAPPED_INDICES, -1);
-                        layer = getter.getOffset(SharedObjectsConstants.LAYER, -1);
+                        indices = getter.get(SharedObjectsConstants.SWAPPED_INDICES, -1);
+                        layer = getter.get(SharedObjectsConstants.LAYER, -1);
                         setter.set(SharedObjectsConstants.SHUFFLED_INDICES, new int[0]);
                         setter.set(SharedObjectsConstants.HAS_INITED_TREE, false);
                     }

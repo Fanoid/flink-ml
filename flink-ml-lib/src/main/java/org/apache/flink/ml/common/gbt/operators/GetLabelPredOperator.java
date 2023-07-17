@@ -46,17 +46,15 @@ public class GetLabelPredOperator extends AbstractSharedObjectsStreamOperator<Ro
     public void processElement(StreamRecord<Integer> element) throws Exception {
         invoke(
                 (getter, setter) -> {
-                    if (!getter.getOffset(SharedObjectsConstants.NEED_INIT_TREE, 1)) {
+                    if (!getter.get(SharedObjectsConstants.NEED_INIT_TREE, 1)) {
                         return;
                     }
-                    if (getter.getOffset(SharedObjectsConstants.ALL_TREES, 1).size() % interval
-                            != 0) {
+                    if (getter.get(SharedObjectsConstants.ALL_TREES, 1).size() % interval != 0) {
                         return;
                     }
                     LOG.info("Start to dump labels and predictors from memory to DataStream.");
-                    BinnedInstance[] instances =
-                            getter.getOffset(SharedObjectsConstants.INSTANCES, 1);
-                    double[] pgh = getter.getOffset(SharedObjectsConstants.PREDS_GRADS_HESSIANS, 1);
+                    BinnedInstance[] instances = getter.get(SharedObjectsConstants.INSTANCES, 1);
+                    double[] pgh = getter.get(SharedObjectsConstants.PREDS_GRADS_HESSIANS, 1);
                     if (0 == pgh.length) {
                         pgh = new double[instances.length * 3];
                     }
