@@ -44,40 +44,78 @@ class SharedObjectsContextImpl implements SharedObjectsContext, Serializable {
     private final Map<ItemDescriptor, SharedObjectsPools.Reader> readers = new HashMap<>();
     private Map<ItemDescriptor<?>, String> ownerMap;
 
+    private int epoch;
+
     public SharedObjectsContextImpl() {
         this.poolID = new PoolID();
+        epoch = -1;
     }
 
     void setOwnerMap(Map<ItemDescriptor<?>, String> ownerMap) {
         this.ownerMap = ownerMap;
     }
 
+    void setEpoch(int epoch) {
+        this.epoch = epoch;
+    }
+
+    void increEpoch() {
+        this.epoch = epoch + 1;
+    }
+
     @Override
     public void invoke(BiConsumerWithException<SharedItemGetter, SharedItemSetter, Exception> func)
             throws Exception {
-        func.accept(this::getSharedItem, this::setSharedItem);
+        func.accept(new SharedItemGetterImpl(), new SharedItemSetterImpl());
     }
 
-    private <T> T getSharedItem(ItemDescriptor<T> key) {
-        //noinspection unchecked
-        SharedObjectsPools.Reader<T> reader = readers.get(key);
-        Preconditions.checkState(
-                null != reader,
-                String.format(
-                        "The operator requested to read a shared item %s not owned by itself.",
-                        key));
-        return reader.get();
+    class SharedItemGetterImpl implements SharedItemGetter {
+        @Override
+        public <T> T get(ItemDescriptor<T> key) {
+            return getAt(key, epoch);
+        }
+
+        @Override
+        public <T> T getLastRound(ItemDescriptor<T> key) {
+            return getAt(key, epoch - 1);
+        }
+
+        @Override
+        public <T> T getOffset(ItemDescriptor<T> key, int offset) {
+            return getAt(key, epoch + offset);
+        }
+
+        public <T> T getAt(ItemDescriptor<T> key, int atEpoch) {
+            //noinspection unchecked
+            SharedObjectsPools.Reader<T> reader = readers.get(key);
+            Preconditions.checkState(
+                    null != reader,
+                    String.format(
+                            "The operator requested to read a shared item %s not owned by itself.",
+                            key));
+            return reader.get(atEpoch);
+        }
     }
 
-    private <T> void setSharedItem(ItemDescriptor<T> key, T value) {
-        //noinspection unchecked
-        SharedObjectsPools.Writer<T> writer = writers.get(key);
-        Preconditions.checkState(
-                null != writer,
-                String.format(
-                        "The operator requested to read a shared item %s not owned by itself.",
-                        key));
-        writer.set(value);
+    class SharedItemSetterImpl implements SharedItemSetter {
+        @Override
+        public <T> void set(ItemDescriptor<T> key, T value) {
+            //noinspection unchecked
+            SharedObjectsPools.Writer<T> writer = writers.get(key);
+            Preconditions.checkState(
+                    null != writer,
+                    String.format(
+                            "The operator requested to read a shared item %s not owned by itself.",
+                            key));
+            writer.set(value, epoch);
+        }
+
+        @Override
+        public <T> void renew(ItemDescriptor<T> key) {
+            //noinspection unchecked
+            SharedObjectsPools.Reader<T> reader = readers.get(key);
+            set(key, reader.get(epoch - 1));
+        }
     }
 
     void initializeState(
@@ -102,7 +140,8 @@ class SharedObjectsContextImpl implements SharedObjectsContext, Serializable {
                                 operator.getOperatorID(),
                                 ((AbstractStreamOperator<?>) operator).getContainingTask(),
                                 runtimeContext,
-                                context));
+                                context,
+                                this.epoch));
             }
             readers.put(descriptor, SharedObjectsPools.getReader(poolID, subtaskId, descriptor));
         }

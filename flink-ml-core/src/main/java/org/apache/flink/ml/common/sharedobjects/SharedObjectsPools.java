@@ -19,7 +19,10 @@
 package org.apache.flink.ml.common.sharedobjects;
 
 import org.apache.flink.api.common.typeutils.TypeSerializer;
+import org.apache.flink.api.common.typeutils.base.IntSerializer;
+import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.tuple.Tuple3;
+import org.apache.flink.api.java.typeutils.runtime.TupleSerializer;
 import org.apache.flink.iteration.datacache.nonkeyed.ListStateWithCache;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.state.StateInitializationContext;
@@ -28,10 +31,18 @@ import org.apache.flink.streaming.api.operators.StreamingRuntimeContext;
 import org.apache.flink.streaming.runtime.tasks.StreamTask;
 import org.apache.flink.util.Preconditions;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
+import java.util.List;
+import java.util.ListIterator;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Stores and manages all shared objects. Every shared object is identified by a tuple of (Pool ID,
@@ -40,9 +51,14 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 class SharedObjectsPools {
 
-    // Stores values of all shared objects.
-    private static final Map<Tuple3<PoolID, Integer, String>, Object> values =
+    private static final Logger LOG = LoggerFactory.getLogger(SharedObjectsPools.class);
+
+    // Stores values of all shared objects, including their corresponding epochs.
+    private static final Map<Tuple3<PoolID, Integer, String>, Tuple2<Integer, Object>> values =
             new ConcurrentHashMap<>();
+
+    private static final Map<Tuple3<PoolID, Integer, String>, List<Tuple2<Integer, CountDownLatch>>>
+            waitQueues = new ConcurrentHashMap<>();
 
     /**
      * Stores owners of all shared objects, where the owner is identified by the accessor ID
@@ -67,6 +83,7 @@ class SharedObjectsPools {
         int refCount = refCounters.compute(t, (k, oldV) -> oldV - 1);
         if (refCount == 0) {
             values.remove(t);
+            waitQueues.remove(t);
             owners.remove(t);
             refCounters.remove(t);
         }
@@ -87,7 +104,8 @@ class SharedObjectsPools {
             OperatorID operatorID,
             StreamTask<?, ?> containingTask,
             StreamingRuntimeContext runtimeContext,
-            StateInitializationContext stateInitializationContext) {
+            StateInitializationContext stateInitializationContext,
+            int epoch) {
         Tuple3<PoolID, Integer, String> objId = Tuple3.of(poolId, subtaskId, descriptor.name);
         String lastOwner = owners.putIfAbsent(objId, ownerId);
         if (null != lastOwner) {
@@ -105,7 +123,7 @@ class SharedObjectsPools {
                         runtimeContext,
                         stateInitializationContext,
                         operatorID);
-        writer.set(descriptor.initVal);
+        writer.set(descriptor.initVal, epoch);
         return writer;
     }
 
@@ -117,23 +135,44 @@ class SharedObjectsPools {
             incRefCount(objId);
         }
 
-        T get() {
-            // It is possible that the `get` request of an item is triggered earlier than its
-            // initialization. In this case, we wait for a while.
+        T get(int fetchEpoch) {
+            //noinspection unchecked
+            Tuple2<Integer, T> epochV = (Tuple2<Integer, T>) values.get(objId);
+            int currentEpoch = epochV.f0;
+            LOG.debug("Get {} with epoch {}, current epoch is {}", objId, fetchEpoch, currentEpoch);
+            Preconditions.checkState(
+                    currentEpoch <= fetchEpoch,
+                    String.format(
+                            "Current epoch %d of %s is larger than fetch epoch %d.",
+                            currentEpoch, objId, fetchEpoch));
+            if (fetchEpoch == currentEpoch) {
+                return epochV.f1;
+            }
+            CountDownLatch latch = new CountDownLatch(1);
+            waitQueues.computeIfPresent(
+                    objId,
+                    (k, v) -> {
+                        v.add(Tuple2.of(fetchEpoch, latch));
+                        return v;
+                    });
+            synchronized (waitQueues) {
+                List<Tuple2<Integer, CountDownLatch>> q = waitQueues.get(objId);
+                q.add(Tuple2.of(fetchEpoch, latch));
+            }
             long waitTime = 10;
-            do {
-                //noinspection unchecked
-                T value = (T) values.get(objId);
-                if (null != value) {
-                    return value;
-                }
+            while (waitTime <= 20 * 1000) {
                 try {
-                    Thread.sleep(waitTime);
+                    if (latch.await(waitTime, TimeUnit.MILLISECONDS)) {
+                        //noinspection unchecked
+                        epochV = (Tuple2<Integer, T>) values.get(objId);
+                        Preconditions.checkState(epochV.f0 == fetchEpoch);
+                        return epochV.f1;
+                    }
+                    waitTime *= 2;
                 } catch (InterruptedException e) {
-                    break;
+                    throw new RuntimeException(e);
                 }
-                waitTime *= 2;
-            } while (waitTime < 10 * 1000);
+            }
             throw new IllegalStateException(
                     String.format(
                             "Failed to get value of %s after waiting %d ms.", objId, waitTime));
@@ -146,7 +185,7 @@ class SharedObjectsPools {
 
     static class Writer<T> extends Reader<T> {
         private final String ownerId;
-        private final ListStateWithCache<T> cache;
+        private final ListStateWithCache<Tuple2<Integer, T>> cache;
         private boolean isDirty;
 
         Writer(
@@ -160,22 +199,27 @@ class SharedObjectsPools {
             super(itemId);
             this.ownerId = ownerId;
             try {
+                //noinspection unchecked
                 cache =
                         new ListStateWithCache<>(
-                                serializer,
+                                new TupleSerializer<>(
+                                        (Class<Tuple2<Integer, T>>) (Class<?>) Tuple2.class,
+                                        new TypeSerializer[] {IntSerializer.INSTANCE, serializer}),
                                 containingTask,
                                 runtimeContext,
                                 stateInitializationContext,
                                 operatorID);
-                Iterator<T> iterator = cache.get().iterator();
+                Iterator<Tuple2<Integer, T>> iterator = cache.get().iterator();
                 if (iterator.hasNext()) {
-                    T value = iterator.next();
+                    Tuple2<Integer, T> epochV = iterator.next();
                     ensureOwner();
-                    values.put(itemId, value);
+                    //noinspection unchecked
+                    values.put(itemId, (Tuple2<Integer, Object>) epochV);
                 }
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
+            waitQueues.put(itemId, new ArrayList<>());
             isDirty = false;
         }
 
@@ -185,10 +229,22 @@ class SharedObjectsPools {
             Preconditions.checkState(owners.get(objId).equals(ownerId));
         }
 
-        void set(T value) {
+        void set(T value, int epoch) {
             ensureOwner();
-            values.put(objId, value);
+            values.put(objId, Tuple2.of(epoch, value));
+            LOG.debug("Set {} with epoch {}", objId, epoch);
             isDirty = true;
+            synchronized (waitQueues) {
+                List<Tuple2<Integer, CountDownLatch>> q = waitQueues.get(objId);
+                ListIterator<Tuple2<Integer, CountDownLatch>> iter = q.listIterator();
+                while (iter.hasNext()) {
+                    Tuple2<Integer, CountDownLatch> next = iter.next();
+                    if (epoch == next.f0) {
+                        iter.remove();
+                        next.f1.countDown();
+                    }
+                }
+            }
         }
 
         @Override
@@ -200,7 +256,8 @@ class SharedObjectsPools {
 
         void snapshotState(StateSnapshotContext context) throws Exception {
             if (isDirty) {
-                cache.update(Collections.singletonList(get()));
+                //noinspection unchecked
+                cache.update(Collections.singletonList((Tuple2<Integer, T>) values.get(objId)));
                 isDirty = false;
             }
             cache.snapshotState(context);

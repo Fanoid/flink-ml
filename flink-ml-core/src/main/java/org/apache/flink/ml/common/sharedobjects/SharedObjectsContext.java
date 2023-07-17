@@ -40,14 +40,20 @@ public interface SharedObjectsContext {
             throws Exception;
 
     /** Interface of shared item getter. */
-    @FunctionalInterface
     interface SharedItemGetter {
         <T> T get(ItemDescriptor<T> key);
+
+        <T> T getLastRound(ItemDescriptor<T> key);
+
+        <T> T getOffset(ItemDescriptor<T> key, int offset);
+
+        <T> T getAt(ItemDescriptor<T> key, int atEpoch);
     }
 
     /** Interface of shared item writer. */
-    @FunctionalInterface
     interface SharedItemSetter {
         <T> void set(ItemDescriptor<T> key, T value);
+
+        <T> void renew(ItemDescriptor<T> key);
     }
 }

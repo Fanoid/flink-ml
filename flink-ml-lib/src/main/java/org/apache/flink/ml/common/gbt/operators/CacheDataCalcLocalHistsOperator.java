@@ -189,7 +189,7 @@ public class CacheDataCalcLocalHistsOperator
                         instancesCollecting.clear();
 
                         TrainContext rawTrainContext =
-                                getter.get(SharedObjectsConstants.TRAIN_CONTEXT);
+                                getter.getOffset(SharedObjectsConstants.TRAIN_CONTEXT, -1);
                         TrainContext trainContext =
                                 new TrainContextInitializer(strategy)
                                         .init(
@@ -203,6 +203,12 @@ public class CacheDataCalcLocalHistsOperator
                         treeInitializerState.update(Collections.singletonList(treeInitializer));
                         histBuilder = new HistBuilder(trainContext);
                         histBuilderState.update(Collections.singletonList(histBuilder));
+                    });
+        } else {
+            invoke(
+                    (getter, setter) -> {
+                        setter.renew(SharedObjectsConstants.TRAIN_CONTEXT);
+                        setter.renew(SharedObjectsConstants.INSTANCES);
                     });
         }
         if (useMultiThreading && null == executor) {
@@ -224,7 +230,15 @@ public class CacheDataCalcLocalHistsOperator
                     Preconditions.checkArgument(
                             getRuntimeContext().getIndexOfThisSubtask() == trainContext.subtaskId);
                     BinnedInstance[] instances = getter.get(SharedObjectsConstants.INSTANCES);
-                    double[] pgh = getter.get(SharedObjectsConstants.PREDS_GRADS_HESSIANS);
+
+                    double[] pgh = new double[0];
+                    boolean needInitTree = true;
+                    int numTrees = 0;
+                    if (epochWatermark > 0) {
+                        pgh = getter.getOffset(SharedObjectsConstants.PREDS_GRADS_HESSIANS, -1);
+                        needInitTree = getter.getOffset(SharedObjectsConstants.NEED_INIT_TREE, -1);
+                        numTrees = getter.getOffset(SharedObjectsConstants.ALL_TREES, -1).size();
+                    }
                     // In the first round, use prior as the predictions.
                     if (0 == pgh.length) {
                         pgh = new double[instances.length * 3];
@@ -238,14 +252,13 @@ public class CacheDataCalcLocalHistsOperator
                         }
                     }
 
-                    boolean needInitTree = getter.get(SharedObjectsConstants.NEED_INIT_TREE);
                     int[] indices;
                     List<LearningNode> layer;
                     if (needInitTree) {
                         // When last tree is finished, initializes a new tree, and shuffle instance
                         // indices.
                         treeInitializer.init(
-                                getter.get(SharedObjectsConstants.ALL_TREES).size(),
+                                numTrees,
                                 d -> setter.set(SharedObjectsConstants.SHUFFLED_INDICES, d));
                         LearningNode rootLearningNode = treeInitializer.getRootLearningNode();
                         indices = getter.get(SharedObjectsConstants.SHUFFLED_INDICES);
@@ -254,8 +267,8 @@ public class CacheDataCalcLocalHistsOperator
                         setter.set(SharedObjectsConstants.HAS_INITED_TREE, true);
                     } else {
                         // Otherwise, uses the swapped instance indices.
-                        indices = getter.get(SharedObjectsConstants.SWAPPED_INDICES);
-                        layer = getter.get(SharedObjectsConstants.LAYER);
+                        indices = getter.getLastRound(SharedObjectsConstants.SWAPPED_INDICES);
+                        layer = getter.getLastRound(SharedObjectsConstants.LAYER);
                         setter.set(SharedObjectsConstants.SHUFFLED_INDICES, new int[0]);
                         setter.set(SharedObjectsConstants.HAS_INITED_TREE, false);
                     }
