@@ -22,6 +22,8 @@ import org.apache.flink.annotation.Experimental;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.util.Preconditions;
 
+import javax.annotation.Nullable;
+
 import java.io.Serializable;
 
 /**
@@ -39,18 +41,22 @@ public class ItemDescriptor<T> implements Serializable {
     public final TypeSerializer<T> serializer;
 
     /** Initialize value. */
-    public final T initVal;
+    public final @Nullable T initVal;
 
     private ItemDescriptor(String name, TypeSerializer<T> serializer, T initVal) {
-        Preconditions.checkNotNull(
-                initVal, "Cannot use `null` as the initial value of a shared item.");
         this.name = name;
         this.serializer = serializer;
         this.initVal = initVal;
     }
 
     public static <T> ItemDescriptor<T> of(String name, TypeSerializer<T> serializer, T initVal) {
+        Preconditions.checkNotNull(
+                initVal, "Cannot use `null` as the initial value of a shared item.");
         return new ItemDescriptor<>(name, serializer, initVal);
+    }
+
+    public static <T> ItemDescriptor<T> of(String name, TypeSerializer<T> serializer) {
+        return new ItemDescriptor<>(name, serializer, null);
     }
 
     @Override

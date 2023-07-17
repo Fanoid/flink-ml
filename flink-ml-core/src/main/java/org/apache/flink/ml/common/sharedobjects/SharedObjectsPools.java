@@ -114,14 +114,19 @@ class SharedObjectsPools {
                             "The shared item (%s, %s, %s) already has a writer %s.",
                             poolId, subtaskId, descriptor.name, ownerId));
         }
-        return new Writer<>(
-                objId,
-                ownerId,
-                descriptor.serializer,
-                containingTask,
-                runtimeContext,
-                stateInitializationContext,
-                operatorID);
+        Writer<T> writer =
+                new Writer<>(
+                        objId,
+                        ownerId,
+                        descriptor.serializer,
+                        containingTask,
+                        runtimeContext,
+                        stateInitializationContext,
+                        operatorID);
+        if (null != descriptor.initVal) {
+            writer.set(descriptor.initVal, epoch);
+        }
+        return writer;
     }
 
     static class Reader<T> {

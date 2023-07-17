@@ -113,7 +113,10 @@ public class PostSplitsOperator extends AbstractSharedObjectsStreamOperator<Inte
 
         invoke(
                 (getter, setter) -> {
-                    int[] indices = getter.getPrevEpoch(SharedObjectsConstants.SWAPPED_INDICES);
+                    int[] indices = new int[0];
+                    if (epochWatermark > 0) {
+                        indices = getter.getPrevEpoch(SharedObjectsConstants.SWAPPED_INDICES);
+                    }
                     if (0 == indices.length) {
                         indices = getter.get(SharedObjectsConstants.SHUFFLED_INDICES).clone();
                     }

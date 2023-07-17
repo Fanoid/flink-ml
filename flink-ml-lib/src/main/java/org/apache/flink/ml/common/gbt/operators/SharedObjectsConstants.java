@@ -62,8 +62,7 @@ public class SharedObjectsConstants {
             ItemDescriptor.of(
                     "instances",
                     new GenericArraySerializer<>(
-                            BinnedInstance.class, BinnedInstanceSerializer.INSTANCE),
-                    new BinnedInstance[0]);
+                            BinnedInstance.class, BinnedInstanceSerializer.INSTANCE));
 
     /**
      * (prediction, gradient, and hessian) of instances, sharing same indexing with {@link
@@ -77,16 +76,15 @@ public class SharedObjectsConstants {
 
     /** Shuffle indices of instances used after every new tree just initialized. */
     static final ItemDescriptor<int[]> SHUFFLED_INDICES =
-            ItemDescriptor.of("shuffled_indices", IntPrimitiveArraySerializer.INSTANCE, new int[0]);
+            ItemDescriptor.of("shuffled_indices", IntPrimitiveArraySerializer.INSTANCE);
 
     /** Swapped indices of instances used when {@link #SHUFFLED_INDICES} not applicable. */
     static final ItemDescriptor<int[]> SWAPPED_INDICES =
-            ItemDescriptor.of("swapped_indices", IntPrimitiveArraySerializer.INSTANCE, new int[0]);
+            ItemDescriptor.of("swapped_indices", IntPrimitiveArraySerializer.INSTANCE);
 
     /** (nodeId, featureId) pairs used to calculate histograms. */
     static final ItemDescriptor<int[]> NODE_FEATURE_PAIRS =
-            ItemDescriptor.of(
-                    "node_feature_pairs", IntPrimitiveArraySerializer.INSTANCE, new int[0]);
+            ItemDescriptor.of("node_feature_pairs", IntPrimitiveArraySerializer.INSTANCE);
 
     /** Leaves nodes of current working tree. */
     static final ItemDescriptor<List<LearningNode>> LEAVES =
@@ -104,8 +102,7 @@ public class SharedObjectsConstants {
 
     /** The root node when initializing a new tree. */
     static final ItemDescriptor<LearningNode> ROOT_LEARNING_NODE =
-            ItemDescriptor.of(
-                    "root_learning_node", LearningNodeSerializer.INSTANCE, new LearningNode());
+            ItemDescriptor.of("root_learning_node", LearningNodeSerializer.INSTANCE);
 
     /** All finished trees. */
     static final ItemDescriptor<List<List<Node>>> ALL_TREES =
@@ -116,10 +113,7 @@ public class SharedObjectsConstants {
 
     /** Nodes in current working tree. */
     static final ItemDescriptor<List<Node>> CURRENT_TREE_NODES =
-            ItemDescriptor.of(
-                    "current_tree_nodes",
-                    new ListSerializer<>(NodeSerializer.INSTANCE),
-                    new ArrayList<>());
+            ItemDescriptor.of("current_tree_nodes", new ListSerializer<>(NodeSerializer.INSTANCE));
 
     /** Indicates the necessity of initializing a new tree. */
     static final ItemDescriptor<Boolean> NEED_INIT_TREE =

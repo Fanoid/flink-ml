@@ -154,7 +154,7 @@ public class SharedObjectsUtilsTest {
 
     static class SharedObjectsBodyWithoutDataDeps implements SharedObjectsBody {
         private static final ItemDescriptor<Long> SUM =
-                ItemDescriptor.of("sum", LongSerializer.INSTANCE, 0L);
+                ItemDescriptor.of("sum", LongSerializer.INSTANCE);
 
         @Override
         public SharedObjectsBodyResult process(List<DataStream<?>> inputs) {
