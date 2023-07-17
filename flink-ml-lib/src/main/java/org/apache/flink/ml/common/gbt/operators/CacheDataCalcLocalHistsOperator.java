@@ -267,8 +267,8 @@ public class CacheDataCalcLocalHistsOperator
                         setter.set(SharedObjectsConstants.HAS_INITED_TREE, true);
                     } else {
                         // Otherwise, uses the swapped instance indices.
-                        indices = getter.getLastRound(SharedObjectsConstants.SWAPPED_INDICES);
-                        layer = getter.getLastRound(SharedObjectsConstants.LAYER);
+                        indices = getter.getOffset(SharedObjectsConstants.SWAPPED_INDICES, -1);
+                        layer = getter.getOffset(SharedObjectsConstants.LAYER, -1);
                         setter.set(SharedObjectsConstants.SHUFFLED_INDICES, new int[0]);
                         setter.set(SharedObjectsConstants.HAS_INITED_TREE, false);
                     }

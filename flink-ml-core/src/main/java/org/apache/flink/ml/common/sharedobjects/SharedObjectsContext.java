@@ -25,7 +25,15 @@ import org.apache.flink.util.function.BiConsumerWithException;
  * Context for shared objects. Every operator implementing {@link SharedObjectsStreamOperator} will
  * get an instance of this context set by {@link
  * SharedObjectsStreamOperator#onSharedObjectsContextSet} in runtime. User-defined logic can be
- * invoked through {@link #invoke} with the access to shared items.
+ * invoked through {@link #invoke} with the access (get/set) to shared items.
+ *
+ * <p>The order of `get` and `set` to a same shared item is strictly controlled with
+ * `epochWatermark` of {@link org.apache.flink.iteration.IterationListener}. Every call of `set`
+ * brings the epoch watermark of the caller. Then every call of `get` must also bring the epoch
+ * watermark it expects to fetch. If these two epoch watermarks match, the `get` returns values
+ * without waiting. If the epoch watermark of `get` is smaller than that of `set`, the call of `get`
+ * is failed. If the epoch watermark of `get` is larger than that of `set`, the call of `get` can
+ * wait for the correct value.
  */
 @Experimental
 public interface SharedObjectsContext {
@@ -41,19 +49,47 @@ public interface SharedObjectsContext {
 
     /** Interface of shared item getter. */
     interface SharedItemGetter {
-        <T> T get(ItemDescriptor<T> key);
 
-        <T> T getLastRound(ItemDescriptor<T> key);
-
+        /**
+         * Get the value of the shared object identified by `key` with current epoch watermark plus
+         * an offset.
+         *
+         * @param key The key of the shared object.
+         * @param offset The offset to current epoch watermark.
+         * @return The value of the shared object.
+         * @param <T> The type of the shared object.
+         */
         <T> T getOffset(ItemDescriptor<T> key, int offset);
 
-        <T> T getAt(ItemDescriptor<T> key, int atEpoch);
+        /**
+         * Get the value of the shared object identified by `key` with current epoch watermark.
+         *
+         * @param key The key of the shared object.
+         * @return The value of the shared object.
+         * @param <T> The type of the shared object.
+         */
+        default <T> T get(ItemDescriptor<T> key) {
+            return getOffset(key, 0);
+        }
     }
 
     /** Interface of shared item writer. */
     interface SharedItemSetter {
+        /**
+         * Set the shared object identified by `key` to `value` with current epoch watermark.
+         *
+         * @param key The key of the shared object.
+         * @param value The value to be set.
+         * @param <T> The type of the shared object.
+         */
         <T> void set(ItemDescriptor<T> key, T value);
 
+        /**
+         * Renew the shared object identified by `key` with current epoch watermark.
+         *
+         * @param key The key of the shared object.
+         * @param <T> The type of the shared object.
+         */
         <T> void renew(ItemDescriptor<T> key);
     }
 }
