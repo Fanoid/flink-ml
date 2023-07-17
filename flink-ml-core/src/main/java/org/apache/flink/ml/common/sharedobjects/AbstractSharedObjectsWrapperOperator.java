@@ -274,7 +274,7 @@ abstract class AbstractSharedObjectsWrapperOperator<T, S extends StreamOperator<
     @Override
     public void onEpochWatermarkIncremented(
             int epochWatermark, Context context, Collector<T> collector) throws Exception {
-        this.context.setEpoch(epochWatermark);
+        this.context.increaseEpoch(epochWatermark);
         if (wrappedOperator instanceof IterationListener) {
             //noinspection unchecked
             ((IterationListener<T>) wrappedOperator)
@@ -284,7 +284,7 @@ abstract class AbstractSharedObjectsWrapperOperator<T, S extends StreamOperator<
 
     @Override
     public void onIterationTerminated(Context context, Collector<T> collector) throws Exception {
-        this.context.increEpoch();
+        this.context.increaseEpoch();
         if (wrappedOperator instanceof IterationListener) {
             //noinspection unchecked
             ((IterationListener<T>) wrappedOperator).onIterationTerminated(context, collector);

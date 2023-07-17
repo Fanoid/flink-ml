@@ -49,18 +49,6 @@ public interface SharedObjectsContext {
 
     /** Interface of shared item getter. */
     interface SharedItemGetter {
-
-        /**
-         * Get the value of the shared object identified by `key` with current epoch watermark plus
-         * an offset.
-         *
-         * @param key The key of the shared object.
-         * @param offset The offset to current epoch watermark.
-         * @return The value of the shared object.
-         * @param <T> The type of the shared object.
-         */
-        <T> T get(ItemDescriptor<T> key, int offset);
-
         /**
          * Get the value of the shared object identified by `key` with current epoch watermark.
          *
@@ -68,9 +56,25 @@ public interface SharedObjectsContext {
          * @return The value of the shared object.
          * @param <T> The type of the shared object.
          */
-        default <T> T get(ItemDescriptor<T> key) {
-            return get(key, 0);
-        }
+        <T> T get(ItemDescriptor<T> key);
+
+        /**
+         * Get the value of the shared object identified by `key` with previous epoch watermark.
+         *
+         * @param key The key of the shared object.
+         * @return The value of the shared object.
+         * @param <T> The type of the shared object.
+         */
+        <T> T getPrevEpoch(ItemDescriptor<T> key);
+
+        /**
+         * Get the value of the shared object identified by `key` with next epoch watermark.
+         *
+         * @param key The key of the shared object.
+         * @return The value of the shared object.
+         * @param <T> The type of the shared object.
+         */
+        <T> T getNextEpoch(ItemDescriptor<T> key);
     }
 
     /** Interface of shared item writer. */

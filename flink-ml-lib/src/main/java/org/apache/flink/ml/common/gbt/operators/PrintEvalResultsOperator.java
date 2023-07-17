@@ -36,7 +36,7 @@ public class PrintEvalResultsOperator extends AbstractSharedObjectsStreamOperato
     public void processElement(StreamRecord<Row> element) throws Exception {
         invoke(
                 (getter, setter) -> {
-                    int numTrees = getter.get(SharedObjectsConstants.ALL_TREES, 1).size();
+                    int numTrees = getter.getNextEpoch(SharedObjectsConstants.ALL_TREES).size();
                     double auc = element.getValue().<Double>getFieldAs(0);
                     LOG.info("AUC for training set after {}-th tree trained: {}", numTrees, auc);
                     System.err.printf(

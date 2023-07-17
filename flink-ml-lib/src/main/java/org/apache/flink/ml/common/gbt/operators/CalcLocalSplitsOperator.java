@@ -83,7 +83,7 @@ public class CalcLocalSplitsOperator
                     (getter, setter) -> {
                         splitFinder =
                                 new SplitFinder(
-                                        getter.get(SharedObjectsConstants.TRAIN_CONTEXT, 1));
+                                        getter.getNextEpoch(SharedObjectsConstants.TRAIN_CONTEXT));
                         splitFinderState.update(Collections.singletonList(splitFinder));
                     });
         }
@@ -98,11 +98,12 @@ public class CalcLocalSplitsOperator
                     if (layer.size() == 0) {
                         layer =
                                 Collections.singletonList(
-                                        getter.get(SharedObjectsConstants.ROOT_LEARNING_NODE, 1));
+                                        getter.getNextEpoch(
+                                                SharedObjectsConstants.ROOT_LEARNING_NODE));
                     }
 
                     int[] nodeFeaturePairs =
-                            getter.get(SharedObjectsConstants.NODE_FEATURE_PAIRS, 1);
+                            getter.getNextEpoch(SharedObjectsConstants.NODE_FEATURE_PAIRS);
                     int nodeId = nodeFeaturePairs[2 * pairId];
                     int featureId = nodeFeaturePairs[2 * pairId + 1];
                     LearningNode node = layer.get(nodeId);

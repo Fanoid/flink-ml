@@ -66,7 +66,7 @@ public class ReduceSplitsOperator
             invoke(
                     (getter, setter) -> {
                         int[] nodeFeaturePairs =
-                                getter.get(SharedObjectsConstants.NODE_FEATURE_PAIRS, 1);
+                                getter.getNextEpoch(SharedObjectsConstants.NODE_FEATURE_PAIRS);
                         for (int i = 0; i < nodeFeaturePairs.length / 2; i += 1) {
                             int nodeId = nodeFeaturePairs[2 * i];
                             nodeFeatureCounter.compute(nodeId, (k, v) -> null == v ? 1 : v + 1);
@@ -85,7 +85,7 @@ public class ReduceSplitsOperator
         invoke(
                 (getter, setter) -> {
                     int[] nodeFeaturePairs =
-                            getter.get(SharedObjectsConstants.NODE_FEATURE_PAIRS, 1);
+                            getter.getNextEpoch(SharedObjectsConstants.NODE_FEATURE_PAIRS);
                     Preconditions.checkState(nodeId == nodeFeaturePairs[pairId * 2]);
                     int featureId = nodeFeaturePairs[pairId * 2 + 1];
                     Preconditions.checkState(!featureMap.get(featureId));

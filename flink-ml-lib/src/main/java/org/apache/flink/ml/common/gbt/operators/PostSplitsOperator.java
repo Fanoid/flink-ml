@@ -113,14 +113,14 @@ public class PostSplitsOperator extends AbstractSharedObjectsStreamOperator<Inte
 
         invoke(
                 (getter, setter) -> {
-                    int[] indices = getter.get(SharedObjectsConstants.SWAPPED_INDICES, -1);
+                    int[] indices = getter.getPrevEpoch(SharedObjectsConstants.SWAPPED_INDICES);
                     if (0 == indices.length) {
                         indices = getter.get(SharedObjectsConstants.SHUFFLED_INDICES).clone();
                     }
 
                     BinnedInstance[] instances = getter.get(SharedObjectsConstants.INSTANCES);
-                    List<LearningNode> leaves = getter.get(SharedObjectsConstants.LEAVES, -1);
-                    List<LearningNode> layer = getter.get(SharedObjectsConstants.LAYER, -1);
+                    List<LearningNode> leaves = getter.getPrevEpoch(SharedObjectsConstants.LEAVES);
+                    List<LearningNode> layer = getter.getPrevEpoch(SharedObjectsConstants.LAYER);
                     List<Node> currentTreeNodes;
                     if (layer.size() == 0) {
                         layer =
@@ -130,7 +130,7 @@ public class PostSplitsOperator extends AbstractSharedObjectsStreamOperator<Inte
                         currentTreeNodes.add(new Node());
                     } else {
                         currentTreeNodes =
-                                getter.get(SharedObjectsConstants.CURRENT_TREE_NODES, -1);
+                                getter.getPrevEpoch(SharedObjectsConstants.CURRENT_TREE_NODES);
                     }
 
                     List<LearningNode> nextLayer =
@@ -150,7 +150,7 @@ public class PostSplitsOperator extends AbstractSharedObjectsStreamOperator<Inte
                         // Current tree is finished.
                         setter.set(SharedObjectsConstants.NEED_INIT_TREE, true);
                         instanceUpdater.update(
-                                getter.get(SharedObjectsConstants.PREDS_GRADS_HESSIANS, -1),
+                                getter.getPrevEpoch(SharedObjectsConstants.PREDS_GRADS_HESSIANS),
                                 leaves,
                                 indices,
                                 instances,
@@ -158,7 +158,7 @@ public class PostSplitsOperator extends AbstractSharedObjectsStreamOperator<Inte
                                 currentTreeNodes);
                         leaves.clear();
                         List<List<Node>> allTrees =
-                                getter.get(SharedObjectsConstants.ALL_TREES, -1);
+                                getter.getPrevEpoch(SharedObjectsConstants.ALL_TREES);
                         allTrees.add(currentTreeNodes);
 
                         setter.set(SharedObjectsConstants.LEAVES, new ArrayList<>());

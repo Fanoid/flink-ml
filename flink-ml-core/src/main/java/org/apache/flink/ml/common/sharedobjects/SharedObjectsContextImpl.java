@@ -26,6 +26,8 @@ import org.apache.flink.streaming.api.operators.StreamingRuntimeContext;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.function.BiConsumerWithException;
 
+import javax.annotation.Nullable;
+
 import java.io.Serializable;
 import java.util.HashMap;
 import java.util.Map;
@@ -44,6 +46,16 @@ class SharedObjectsContextImpl implements SharedObjectsContext, Serializable {
     private final Map<ItemDescriptor, SharedObjectsPools.Reader> readers = new HashMap<>();
     private Map<ItemDescriptor<?>, String> ownerMap;
 
+    /**
+     * Saves current epoch watermark.
+     *
+     * <p>If the context is not in iterations, epoch is always -1. If the context is in the
+     * iterations, in general, it keeps the same with the epoch watermark of the iterations except
+     * for two situations: 1. Before the first watermark emitted with {@link
+     * org.apache.flink.iteration.IterationListener#onEpochWatermarkIncremented}, epoch is -1. 2.
+     * After {@link org.apache.flink.iteration.IterationListener#onIterationTerminated} called,
+     * epoch is set to the previous epoch plus 1.
+     */
     private int epoch;
 
     public SharedObjectsContextImpl() {
@@ -55,57 +67,20 @@ class SharedObjectsContextImpl implements SharedObjectsContext, Serializable {
         this.ownerMap = ownerMap;
     }
 
-    void setEpoch(int epoch) {
-        this.epoch = epoch;
+    void increaseEpoch(@Nullable Integer targetEpoch) {
+        epoch += 1;
+        // Sanity check
+        Preconditions.checkState(null == targetEpoch || epoch == targetEpoch);
     }
 
-    void increEpoch() {
-        this.epoch = epoch + 1;
+    void increaseEpoch() {
+        increaseEpoch(null);
     }
 
     @Override
     public void invoke(BiConsumerWithException<SharedItemGetter, SharedItemSetter, Exception> func)
             throws Exception {
         func.accept(new SharedItemGetterImpl(), new SharedItemSetterImpl());
-    }
-
-    class SharedItemGetterImpl implements SharedItemGetter {
-        @Override
-        public <T> T get(ItemDescriptor<T> key, int offset) {
-            return getAt(key, epoch + offset);
-        }
-
-        public <T> T getAt(ItemDescriptor<T> key, int atEpoch) {
-            //noinspection unchecked
-            SharedObjectsPools.Reader<T> reader = readers.get(key);
-            Preconditions.checkState(
-                    null != reader,
-                    String.format(
-                            "The operator requested to read a shared item %s not owned by itself.",
-                            key));
-            return reader.get(atEpoch);
-        }
-    }
-
-    class SharedItemSetterImpl implements SharedItemSetter {
-        @Override
-        public <T> void set(ItemDescriptor<T> key, T value) {
-            //noinspection unchecked
-            SharedObjectsPools.Writer<T> writer = writers.get(key);
-            Preconditions.checkState(
-                    null != writer,
-                    String.format(
-                            "The operator requested to read a shared item %s not owned by itself.",
-                            key));
-            writer.set(value, epoch);
-        }
-
-        @Override
-        public <T> void renew(ItemDescriptor<T> key) {
-            //noinspection unchecked
-            SharedObjectsPools.Reader<T> reader = readers.get(key);
-            set(key, reader.get(epoch - 1));
-        }
     }
 
     void initializeState(
@@ -152,5 +127,54 @@ class SharedObjectsContextImpl implements SharedObjectsContext, Serializable {
         }
         writers.clear();
         readers.clear();
+    }
+
+    class SharedItemGetterImpl implements SharedItemGetter {
+        @Override
+        public <T> T getPrevEpoch(ItemDescriptor<T> key) {
+            return getAt(key, epoch - 1);
+        }
+
+        @Override
+        public <T> T getNextEpoch(ItemDescriptor<T> key) {
+            return getAt(key, epoch + 1);
+        }
+
+        @Override
+        public <T> T get(ItemDescriptor<T> key) {
+            return getAt(key, epoch);
+        }
+
+        public <T> T getAt(ItemDescriptor<T> key, int atEpoch) {
+            //noinspection unchecked
+            SharedObjectsPools.Reader<T> reader = readers.get(key);
+            Preconditions.checkState(
+                    null != reader,
+                    String.format(
+                            "The operator requested to read a shared item %s not owned by itself.",
+                            key));
+            return reader.get(atEpoch);
+        }
+    }
+
+    class SharedItemSetterImpl implements SharedItemSetter {
+        @Override
+        public <T> void set(ItemDescriptor<T> key, T value) {
+            //noinspection unchecked
+            SharedObjectsPools.Writer<T> writer = writers.get(key);
+            Preconditions.checkState(
+                    null != writer,
+                    String.format(
+                            "The operator requested to read a shared item %s not owned by itself.",
+                            key));
+            writer.set(value, epoch);
+        }
+
+        @Override
+        public <T> void renew(ItemDescriptor<T> key) {
+            //noinspection unchecked
+            SharedObjectsPools.Reader<T> reader = readers.get(key);
+            set(key, reader.get(epoch - 1));
+        }
     }
 }
