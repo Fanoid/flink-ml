@@ -31,6 +31,7 @@ import javax.annotation.Nullable;
 import java.io.Serializable;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Default implementation of {@link SharedObjectsContext}.
@@ -131,21 +132,39 @@ class SharedObjectsContextImpl implements SharedObjectsContext, Serializable {
 
     class SharedItemGetterImpl implements SharedItemGetter {
         @Override
-        public <T> T getPrevEpoch(ItemDescriptor<T> key) {
+        public <T> T getPrevEpoch(ItemDescriptor<T> key) throws InterruptedException {
             return getAt(key, epoch - 1);
         }
 
         @Override
-        public <T> T getNextEpoch(ItemDescriptor<T> key) {
+        public <T> T getPrevEpoch(ItemDescriptor<T> key, long timeout, TimeUnit unit)
+                throws InterruptedException {
+            return getAt(key, epoch - 1, timeout, unit);
+        }
+
+        @Override
+        public <T> T getNextEpoch(ItemDescriptor<T> key) throws InterruptedException {
             return getAt(key, epoch + 1);
         }
 
         @Override
-        public <T> T get(ItemDescriptor<T> key) {
+        public <T> T getNextEpoch(ItemDescriptor<T> key, long timeout, TimeUnit unit)
+                throws InterruptedException {
+            return getAt(key, epoch + 1, timeout, unit);
+        }
+
+        @Override
+        public <T> T get(ItemDescriptor<T> key) throws InterruptedException {
             return getAt(key, epoch);
         }
 
-        public <T> T getAt(ItemDescriptor<T> key, int atEpoch) {
+        @Override
+        public <T> T get(ItemDescriptor<T> key, long timeout, TimeUnit unit)
+                throws InterruptedException {
+            return getAt(key, epoch, timeout, unit);
+        }
+
+        protected <T> T getAt(ItemDescriptor<T> key, int atEpoch) throws InterruptedException {
             //noinspection unchecked
             SharedObjectsPools.Reader<T> reader = readers.get(key);
             Preconditions.checkState(
@@ -154,6 +173,18 @@ class SharedObjectsContextImpl implements SharedObjectsContext, Serializable {
                             "The operator requested to read a shared item %s not owned by itself.",
                             key));
             return reader.get(atEpoch);
+        }
+
+        protected <T> T getAt(ItemDescriptor<T> key, int atEpoch, long timeout, TimeUnit unit)
+                throws InterruptedException {
+            //noinspection unchecked
+            SharedObjectsPools.Reader<T> reader = readers.get(key);
+            Preconditions.checkState(
+                    null != reader,
+                    String.format(
+                            "The operator requested to read a shared item %s not owned by itself.",
+                            key));
+            return reader.get(atEpoch, timeout, unit);
         }
     }
 
@@ -171,7 +202,7 @@ class SharedObjectsContextImpl implements SharedObjectsContext, Serializable {
         }
 
         @Override
-        public <T> void renew(ItemDescriptor<T> key) {
+        public <T> void renew(ItemDescriptor<T> key) throws InterruptedException {
             //noinspection unchecked
             SharedObjectsPools.Reader<T> reader = readers.get(key);
             set(key, reader.get(epoch - 1));

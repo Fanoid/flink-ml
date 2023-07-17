@@ -21,6 +21,8 @@ package org.apache.flink.ml.common.sharedobjects;
 import org.apache.flink.annotation.Experimental;
 import org.apache.flink.util.function.BiConsumerWithException;
 
+import java.util.concurrent.TimeUnit;
+
 /**
  * Context for shared objects. Every operator implementing {@link SharedObjectsStreamOperator} will
  * get an instance of this context set by {@link
@@ -49,32 +51,70 @@ public interface SharedObjectsContext {
 
     /** Interface of shared item getter. */
     interface SharedItemGetter {
-        /**
-         * Get the value of the shared object identified by `key` with current epoch watermark.
-         *
-         * @param key The key of the shared object.
-         * @return The value of the shared object.
-         * @param <T> The type of the shared object.
-         */
-        <T> T get(ItemDescriptor<T> key);
 
         /**
-         * Get the value of the shared object identified by `key` with previous epoch watermark.
+         * Gets the value of the shared object identified by `key` with current epoch watermark.
          *
          * @param key The key of the shared object.
          * @return The value of the shared object.
          * @param <T> The type of the shared object.
          */
-        <T> T getPrevEpoch(ItemDescriptor<T> key);
+        <T> T get(ItemDescriptor<T> key) throws InterruptedException;
 
         /**
-         * Get the value of the shared object identified by `key` with next epoch watermark.
+         * Gets the value of the shared object identified by `key` with current epoch watermark, or
+         * the specified waiting time elapses.
+         *
+         * @param key The key of the shared object.
+         * @param timeout The maximum time to wait.
+         * @param unit The time unit of the timeout argument.
+         * @return The value of the shared object or null.
+         * @param <T> The type of the shared object.
+         */
+        <T> T get(ItemDescriptor<T> key, long timeout, TimeUnit unit) throws InterruptedException;
+
+        /**
+         * Gets the value of the shared object identified by `key` with previous epoch watermark.
          *
          * @param key The key of the shared object.
          * @return The value of the shared object.
          * @param <T> The type of the shared object.
          */
-        <T> T getNextEpoch(ItemDescriptor<T> key);
+        <T> T getPrevEpoch(ItemDescriptor<T> key) throws InterruptedException;
+
+        /**
+         * Gets the value of the shared object identified by `key` with previous epoch watermark,or
+         * the specified waiting time elapses.
+         *
+         * @param key The key of the shared object.
+         * @param timeout The maximum time to wait.
+         * @param unit The time unit of the timeout argument.
+         * @return The value of the shared object.
+         * @param <T> The type of the shared object.
+         */
+        <T> T getPrevEpoch(ItemDescriptor<T> key, long timeout, TimeUnit unit)
+                throws InterruptedException;
+
+        /**
+         * Gets the value of the shared object identified by `key` with next epoch watermark.
+         *
+         * @param key The key of the shared object.
+         * @return The value of the shared object.
+         * @param <T> The type of the shared object.
+         */
+        <T> T getNextEpoch(ItemDescriptor<T> key) throws InterruptedException;
+
+        /**
+         * Gets the value of the shared object identified by `key` with next epoch watermark.
+         *
+         * @param key The key of the shared object.
+         * @param timeout The maximum time to wait.
+         * @param unit The time unit of the timeout argument.
+         * @return The value of the shared object.
+         * @param <T> The type of the shared object.
+         */
+        <T> T getNextEpoch(ItemDescriptor<T> key, long timeout, TimeUnit unit)
+                throws InterruptedException;
     }
 
     /** Interface of shared item writer. */
@@ -94,6 +134,6 @@ public interface SharedObjectsContext {
          * @param key The key of the shared object.
          * @param <T> The type of the shared object.
          */
-        <T> void renew(ItemDescriptor<T> key);
+        <T> void renew(ItemDescriptor<T> key) throws InterruptedException;
     }
 }

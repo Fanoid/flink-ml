@@ -36,6 +36,7 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -45,85 +46,165 @@ import java.util.Map;
 /** Tests the {@link SharedObjectsUtils}. */
 public class SharedObjectsUtilsTest {
 
-    private static final ItemDescriptor<Long> SUM =
-            ItemDescriptor.of("sum", LongSerializer.INSTANCE, 0L);
     @Rule public TemporaryFolder tempFolder = new TemporaryFolder();
 
-    static SharedObjectsBody.SharedObjectsBodyResult sharedObjectsBody(List<DataStream<?>> inputs) {
-        //noinspection unchecked
-        DataStream<Long> data = (DataStream<Long>) inputs.get(0);
-
-        AOperator aOp = new AOperator();
-        SingleOutputStreamOperator<Long> afterAOp =
-                data.transform("a", TypeInformation.of(Long.class), aOp);
-
-        BOperator bOp = new BOperator();
-        SingleOutputStreamOperator<Long> afterBOp =
-                afterAOp.transform("b", TypeInformation.of(Long.class), bOp);
-
-        Map<ItemDescriptor<?>, SharedObjectsStreamOperator> ownerMap = new HashMap<>();
-        ownerMap.put(SUM, aOp);
-
-        return new SharedObjectsBody.SharedObjectsBodyResult(
-                Collections.singletonList(afterBOp),
-                Arrays.asList(afterAOp.getTransformation(), afterBOp.getTransformation()),
-                ownerMap);
-    }
-
     @Test
-    public void testSharedObjects() throws Exception {
+    public void testSharedObjectsWithDataDeps() throws Exception {
         StreamExecutionEnvironment env = TestUtils.getExecutionEnvironment();
 
         DataStream<Long> data = env.fromSequence(1, 100);
         List<DataStream<?>> outputs =
                 SharedObjectsUtils.withSharedObjects(
-                        Collections.singletonList(data), SharedObjectsUtilsTest::sharedObjectsBody);
+                        Collections.singletonList(data), new SharedObjectsBodyWithDataDeps());
         //noinspection unchecked
         DataStream<Long> partitionSum = (DataStream<Long>) outputs.get(0);
-        DataStream<Long> allSum = DataStreamUtils.reduce(partitionSum, new SumReduceFunction());
+        DataStream<Long> allSum =
+                DataStreamUtils.reduce(
+                        partitionSum, new SharedObjectsBodyWithDataDeps.SumReduceFunction());
         allSum.getTransformation().setParallelism(1);
         //noinspection unchecked
         List<Long> results = IteratorUtils.toList(allSum.executeAndCollect());
         Assert.assertEquals(Collections.singletonList(5050L), results);
     }
 
-    /** Operator A: add input elements to the shared {@link #SUM}. */
-    static class AOperator extends AbstractSharedObjectsStreamOperator<Long>
-            implements OneInputStreamOperator<Long, Long>, BoundedOneInput {
+    @Test
+    public void testSharedObjectsWithoutDataDeps() throws Exception {
+        StreamExecutionEnvironment env = TestUtils.getExecutionEnvironment();
+
+        DataStream<Long> data = env.fromSequence(1, 100);
+        List<DataStream<?>> outputs =
+                SharedObjectsUtils.withSharedObjects(
+                        Collections.singletonList(data), new SharedObjectsBodyWithoutDataDeps());
+        DataStream<Long> added = (DataStream<Long>) outputs.get(0);
+        List<Long> results = IteratorUtils.toList(added.executeAndCollect());
+        Collections.sort(results);
+        List<Long> expected = new ArrayList<>();
+        for (long i = 1; i <= 100; i += 1) {
+            expected.add(i + 5050);
+        }
+        Assert.assertEquals(expected, results);
+    }
+
+    static class SharedObjectsBodyWithDataDeps implements SharedObjectsBody {
+        private static final ItemDescriptor<Long> SUM =
+                ItemDescriptor.of("sum", LongSerializer.INSTANCE, 0L);
 
         @Override
-        public void processElement(StreamRecord<Long> element) throws Exception {
-            invoke(
-                    (getter, setter) -> {
-                        Long currentSum = getter.get(SUM);
-                        setter.set(SUM, currentSum + element.getValue());
-                    });
+        public SharedObjectsBodyResult process(List<DataStream<?>> inputs) {
+            //noinspection unchecked
+            DataStream<Long> data = (DataStream<Long>) inputs.get(0);
+
+            AOperator aOp = new AOperator();
+            SingleOutputStreamOperator<Long> afterAOp =
+                    data.transform("a", TypeInformation.of(Long.class), aOp);
+
+            BOperator bOp = new BOperator();
+            SingleOutputStreamOperator<Long> afterBOp =
+                    afterAOp.transform("b", TypeInformation.of(Long.class), bOp);
+
+            Map<ItemDescriptor<?>, SharedObjectsStreamOperator> ownerMap = new HashMap<>();
+            ownerMap.put(SUM, aOp);
+
+            return new SharedObjectsBodyResult(
+                    Collections.singletonList(afterBOp),
+                    Arrays.asList(afterAOp.getTransformation(), afterBOp.getTransformation()),
+                    ownerMap);
         }
 
-        @Override
-        public void endInput() throws Exception {
-            // Informs BOperator to get the value from shared {@link #SUM}.
-            output.collect(new StreamRecord<>(0L));
+        /** Operator A: add input elements to the shared {@link #SUM}. */
+        static class AOperator extends AbstractSharedObjectsStreamOperator<Long>
+                implements OneInputStreamOperator<Long, Long>, BoundedOneInput {
+
+            @Override
+            public void processElement(StreamRecord<Long> element) throws Exception {
+                invoke(
+                        (getter, setter) -> {
+                            Long currentSum = getter.get(SUM);
+                            setter.set(SUM, currentSum + element.getValue());
+                        });
+            }
+
+            @Override
+            public void endInput() throws Exception {
+                // Informs BOperator to get the value from shared {@link #SUM}.
+                output.collect(new StreamRecord<>(0L));
+            }
+        }
+
+        /** Operator B: when input ends, get the value from shared {@link #SUM}. */
+        static class BOperator extends AbstractSharedObjectsStreamOperator<Long>
+                implements OneInputStreamOperator<Long, Long> {
+
+            @Override
+            public void processElement(StreamRecord<Long> element) throws Exception {
+                invoke(
+                        (getter, setter) -> {
+                            output.collect(new StreamRecord<>(getter.get(SUM)));
+                        });
+            }
+        }
+
+        static class SumReduceFunction implements ReduceFunction<Long> {
+            @Override
+            public Long reduce(Long value1, Long value2) {
+                return value1 + value2;
+            }
         }
     }
 
-    /** Operator B: when input ends, get the value from shared {@link #SUM}. */
-    static class BOperator extends AbstractSharedObjectsStreamOperator<Long>
-            implements OneInputStreamOperator<Long, Long> {
+    static class SharedObjectsBodyWithoutDataDeps implements SharedObjectsBody {
+        private static final ItemDescriptor<Long> SUM =
+                ItemDescriptor.of("sum", LongSerializer.INSTANCE, 0L);
 
         @Override
-        public void processElement(StreamRecord<Long> element) throws Exception {
-            invoke(
-                    (getter, setter) -> {
-                        output.collect(new StreamRecord<>(getter.get(SUM)));
-                    });
+        public SharedObjectsBodyResult process(List<DataStream<?>> inputs) {
+            //noinspection unchecked
+            DataStream<Long> data = (DataStream<Long>) inputs.get(0);
+            DataStream<Long> sum = DataStreamUtils.reduce(data, Long::sum);
+
+            COperator cOp = new COperator();
+            SingleOutputStreamOperator<Long> afterCOp =
+                    sum.broadcast().transform("c", TypeInformation.of(Long.class), cOp);
+
+            DOperator dOp = new DOperator();
+            SingleOutputStreamOperator<Long> afterDOp =
+                    data.transform("d", TypeInformation.of(Long.class), dOp);
+
+            Map<ItemDescriptor<?>, SharedObjectsStreamOperator> ownerMap = new HashMap<>();
+            ownerMap.put(SUM, cOp);
+
+            return new SharedObjectsBodyResult(
+                    Collections.singletonList(afterDOp),
+                    Arrays.asList(afterCOp.getTransformation(), afterDOp.getTransformation()),
+                    ownerMap);
         }
-    }
 
-    static class SumReduceFunction implements ReduceFunction<Long> {
-        @Override
-        public Long reduce(Long value1, Long value2) {
-            return value1 + value2;
+        /** Operator C: set the shared object. */
+        static class COperator extends AbstractSharedObjectsStreamOperator<Long>
+                implements OneInputStreamOperator<Long, Long> {
+            @Override
+            public void processElement(StreamRecord<Long> element) throws Exception {
+                invoke(
+                        (getter, setter) -> {
+                            Thread.sleep(5 * 1000);
+                            setter.set(SUM, element.getValue());
+                        });
+            }
+        }
+
+        /** Operator D: get the value from shared {@link #SUM}. */
+        static class DOperator extends AbstractSharedObjectsStreamOperator<Long>
+                implements OneInputStreamOperator<Long, Long> {
+
+            private Long sum;
+
+            @Override
+            public void processElement(StreamRecord<Long> element) throws Exception {
+                if (null == sum) {
+                    invoke((getter, setter) -> sum = getter.get(SUM));
+                }
+                output.collect(new StreamRecord<>(sum + element.getValue()));
+            }
         }
     }
 }

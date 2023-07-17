@@ -114,17 +114,14 @@ class SharedObjectsPools {
                             "The shared item (%s, %s, %s) already has a writer %s.",
                             poolId, subtaskId, descriptor.name, ownerId));
         }
-        Writer<T> writer =
-                new Writer<>(
-                        objId,
-                        ownerId,
-                        descriptor.serializer,
-                        containingTask,
-                        runtimeContext,
-                        stateInitializationContext,
-                        operatorID);
-        writer.set(descriptor.initVal, epoch);
-        return writer;
+        return new Writer<>(
+                objId,
+                ownerId,
+                descriptor.serializer,
+                containingTask,
+                runtimeContext,
+                stateInitializationContext,
+                operatorID);
     }
 
     static class Reader<T> {
@@ -135,47 +132,58 @@ class SharedObjectsPools {
             incRefCount(objId);
         }
 
-        T get(int fetchEpoch) {
+        private T getInternal(int fetchEpoch, boolean hasTimeout, long timeout, TimeUnit unit)
+                throws InterruptedException {
             //noinspection unchecked
             Tuple2<Integer, T> epochV = (Tuple2<Integer, T>) values.get(objId);
-            int currentEpoch = epochV.f0;
-            LOG.debug("Get {} with epoch {}, current epoch is {}", objId, fetchEpoch, currentEpoch);
-            Preconditions.checkState(
-                    currentEpoch <= fetchEpoch,
-                    String.format(
-                            "Current epoch %d of %s is larger than fetch epoch %d.",
-                            currentEpoch, objId, fetchEpoch));
-            if (fetchEpoch == currentEpoch) {
-                return epochV.f1;
+            if (null != epochV) {
+                int currentEpoch = epochV.f0;
+                LOG.debug(
+                        "Get {} with epoch {}, current epoch is {}",
+                        objId,
+                        fetchEpoch,
+                        currentEpoch);
+                Preconditions.checkState(
+                        currentEpoch <= fetchEpoch,
+                        String.format(
+                                "Current epoch %d of %s is larger than fetch epoch %d.",
+                                currentEpoch, objId, fetchEpoch));
+                if (fetchEpoch == epochV.f0) {
+                    return epochV.f1;
+                }
             }
             CountDownLatch latch = new CountDownLatch(1);
-            waitQueues.computeIfPresent(
-                    objId,
-                    (k, v) -> {
-                        v.add(Tuple2.of(fetchEpoch, latch));
-                        return v;
-                    });
             synchronized (waitQueues) {
+                if (!waitQueues.containsKey(objId)) {
+                    waitQueues.put(objId, new ArrayList<>());
+                }
                 List<Tuple2<Integer, CountDownLatch>> q = waitQueues.get(objId);
                 q.add(Tuple2.of(fetchEpoch, latch));
             }
-            long waitTime = 10;
-            while (waitTime <= 20 * 1000) {
-                try {
-                    if (latch.await(waitTime, TimeUnit.MILLISECONDS)) {
-                        //noinspection unchecked
-                        epochV = (Tuple2<Integer, T>) values.get(objId);
-                        Preconditions.checkState(epochV.f0 == fetchEpoch);
-                        return epochV.f1;
-                    }
-                    waitTime *= 2;
-                } catch (InterruptedException e) {
-                    throw new RuntimeException(e);
+            if (hasTimeout) {
+                if (latch.await(timeout, unit)) {
+                    //noinspection unchecked
+                    epochV = (Tuple2<Integer, T>) values.get(objId);
+                    Preconditions.checkState(epochV.f0 == fetchEpoch);
+                    return epochV.f1;
+                } else {
+                    return null;
                 }
+            } else {
+                latch.await();
+                //noinspection unchecked
+                epochV = (Tuple2<Integer, T>) values.get(objId);
+                Preconditions.checkState(epochV.f0 == fetchEpoch);
+                return epochV.f1;
             }
-            throw new IllegalStateException(
-                    String.format(
-                            "Failed to get value of %s after waiting %d ms.", objId, waitTime));
+        }
+
+        T get(int fetchEpoch) throws InterruptedException {
+            return getInternal(fetchEpoch, false, 0, TimeUnit.MILLISECONDS);
+        }
+
+        T get(int fetchEpoch, long timeout, TimeUnit unit) throws InterruptedException {
+            return getInternal(fetchEpoch, true, timeout, unit);
         }
 
         void remove() {
@@ -219,7 +227,6 @@ class SharedObjectsPools {
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
-            waitQueues.put(itemId, new ArrayList<>());
             isDirty = false;
         }
 
@@ -235,6 +242,9 @@ class SharedObjectsPools {
             LOG.debug("Set {} with epoch {}", objId, epoch);
             isDirty = true;
             synchronized (waitQueues) {
+                if (!waitQueues.containsKey(objId)) {
+                    waitQueues.put(objId, new ArrayList<>());
+                }
                 List<Tuple2<Integer, CountDownLatch>> q = waitQueues.get(objId);
                 ListIterator<Tuple2<Integer, CountDownLatch>> iter = q.listIterator();
                 while (iter.hasNext()) {
