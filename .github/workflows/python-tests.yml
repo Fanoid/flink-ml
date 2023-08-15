@@ -26,7 +26,6 @@ on:
 
 jobs:
   python-tests:
-    if: github.repository == 'apache/flink-ml' || github.event_name == 'workflow_dispatch'
     name: Python ${{ matrix.python-version }} tests on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
